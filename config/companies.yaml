@@ -1,27 +1,295 @@
 # Target employer boards. Only PUBLIC ATS endpoints published by the employer are used.
 # ats: greenhouse | lever | ashby | workday | bamboohr
-# The entries below are illustrative examples - verify each board token before enabling.
+# Each board endpoint below was verified to return JSON with open jobs on 2026-10-16.
+# "matched" = open roles whose title matched Mike's target titles at check time.
 companies:
-  - name: Example Health (Greenhouse)
-    ats: greenhouse
-    board_token: examplehealth
-    active: false
-  - name: Example Bio (Lever)
-    ats: lever
-    board_token: examplebio
-    active: false
-  - name: Example AI (Ashby)
+  # industry: health-ai | 43 open roles, 0 matched target titles (2026-10-16)
+  - name: Abridge
     ats: ashby
-    board_token: exampleai
-    active: false
-  - name: Example Hospital System (Workday)
-    ats: workday
-    workday:
-      host: example.wd5.myworkdayjobs.com
-      tenant: example
-      site: External
-    active: false
-  - name: Example Clinic (BambooHR)
-    ats: bamboohr
-    board_token: exampleclinic
-    active: false
+    board_token: abridge
+    active: true
+  # industry: life-sciences-software | 938 open roles, 89 matched target titles (2026-10-16)
+  - name: Veeva Systems
+    ats: lever
+    board_token: veeva
+    active: true
+  # industry: health-data | 19 open roles, 1 matched target titles (2026-10-16)
+  - name: Flatiron Health
+    ats: greenhouse
+    board_token: flatironhealth
+    active: true
+  # industry: health-data | 24 open roles, 1 matched target titles (2026-10-16)
+  - name: Komodo Health
+    ats: greenhouse
+    board_token: komodohealth
+    active: true
+  # industry: life-sciences-software | 56 open roles, 9 matched target titles (2026-10-16)
+  - name: Benchling
+    ats: ashby
+    board_token: benchling
+    active: true
+  # industry: health-ai | 10 open roles, 1 matched target titles (2026-10-16)
+  - name: Notable
+    ats: ashby
+    board_token: notable
+    active: true
+  # industry: health-ai | 19 open roles, 1 matched target titles (2026-10-16)
+  - name: Ambience Healthcare
+    ats: ashby
+    board_token: ambiencehealthcare
+    active: true
+  # industry: healthtech | 82 open roles, 2 matched target titles (2026-10-16)
+  - name: Commure
+    ats: ashby
+    board_token: commure
+    active: true
+  # industry: healthtech | 3 open roles, 0 matched target titles (2026-10-16)
+  - name: Cedar
+    ats: ashby
+    board_token: cedar
+    active: true
+  # industry: payer | 248 open roles, 10 matched target titles (2026-10-16)
+  - name: Oscar Health
+    ats: greenhouse
+    board_token: oscar
+    active: true
+  # industry: digital-health | 51 open roles, 0 matched target titles (2026-10-16)
+  - name: Included Health
+    ats: lever
+    board_token: includedhealth
+    active: true
+  # industry: digital-health | 88 open roles, 9 matched target titles (2026-10-16)
+  - name: Headway
+    ats: ashby
+    board_token: headway
+    active: true
+  # industry: digital-health | 8 open roles, 0 matched target titles (2026-10-16)
+  - name: Modern Health
+    ats: greenhouse
+    board_token: modernhealth
+    active: true
+  # industry: biotech | 30 open roles, 1 matched target titles (2026-10-16)
+  - name: Freenome
+    ats: greenhouse
+    board_token: freenome
+    active: true
+  # industry: clinical-trials | 63 open roles, 0 matched target titles (2026-10-16)
+  - name: Science 37
+    ats: greenhouse
+    board_token: science37
+    active: true
+  # industry: ai-llm | 656 open roles, 49 matched target titles (2026-10-16)
+  - name: Anthropic
+    ats: greenhouse
+    board_token: anthropic
+    active: true
+  # industry: ai-llm | 815 open roles, 36 matched target titles (2026-10-16)
+  - name: OpenAI
+    ats: ashby
+    board_token: openai
+    active: true
+  # industry: ai-llm | 182 open roles, 15 matched target titles (2026-10-16)
+  - name: Scale AI
+    ats: greenhouse
+    board_token: scaleai
+    active: true
+  # industry: ai-saas | 186 open roles, 12 matched target titles (2026-10-16)
+  - name: Sierra
+    ats: ashby
+    board_token: sierra
+    active: true
+  # industry: ai-saas | 345 open roles, 12 matched target titles (2026-10-16)
+  - name: Harvey
+    ats: ashby
+    board_token: harvey
+    active: true
+  # industry: biotech | 18 open roles, 0 matched target titles (2026-10-16)
+  - name: GRAIL
+    ats: lever
+    board_token: grailbio
+    active: true
+  # industry: ai-saas | 136 open roles, 16 matched target titles (2026-10-16)
+  - name: Glean
+    ats: greenhouse
+    board_token: gleanwork
+    active: true
+  # industry: ai-saas | 22 open roles, 0 matched target titles (2026-10-16)
+  - name: Hebbia
+    ats: ashby
+    board_token: hebbia-ai
+    active: true
+  # industry: healthtech | 18 open roles, 0 matched target titles (2026-10-16)
+  - name: Elation Health
+    ats: greenhouse
+    board_token: elationhealth
+    active: true
+  # industry: digital-health | 54 open roles, 0 matched target titles (2026-10-16)
+  - name: Ro
+    ats: lever
+    board_token: ro
+    active: true
+  # industry: biotech | 230 open roles, 4 matched target titles (2026-10-16)
+  - name: Natera
+    ats: greenhouse
+    board_token: natera
+    active: true
+  # industry: health-ai | 6 open roles, 0 matched target titles (2026-10-16)
+  - name: Owkin
+    ats: ashby
+    board_token: owkin
+    active: true
+  # industry: health-ai | 14 open roles, 2 matched target titles (2026-10-16)
+  - name: PathAI
+    ats: greenhouse
+    board_token: pathai
+    active: true
+  # industry: health-ai | 11 open roles, 1 matched target titles (2026-10-16)
+  - name: Suki
+    ats: greenhouse
+    board_token: suki
+    active: true
+  # industry: health-ai | 9 open roles, 1 matched target titles (2026-10-16)
+  - name: Nabla
+    ats: ashby
+    board_token: nabla
+    active: true
+  # industry: health-ai | 9 open roles, 0 matched target titles (2026-10-16)
+  - name: OpenEvidence
+    ats: ashby
+    board_token: openevidence
+    active: true
+  # industry: healthtech | 15 open roles, 1 matched target titles (2026-10-16)
+  - name: Doximity
+    ats: greenhouse
+    board_token: doximity
+    active: true
+  # industry: healthtech | 59 open roles, 1 matched target titles (2026-10-16)
+  - name: Zocdoc
+    ats: greenhouse
+    board_token: zocdoc
+    active: true
+  # industry: digital-health | 513 open roles, 1 matched target titles (2026-10-16)
+  - name: Lyra Health
+    ats: lever
+    board_token: lyrahealth
+    active: true
+  # industry: digital-health | 18 open roles, 1 matched target titles (2026-10-16)
+  - name: Omada Health
+    ats: greenhouse
+    board_token: omadahealth
+    active: true
+  # industry: digital-health | 22 open roles, 1 matched target titles (2026-10-16)
+  - name: Virta Health
+    ats: ashby
+    board_token: virtahealth
+    active: true
+  # industry: digital-health | 36 open roles, 2 matched target titles (2026-10-16)
+  - name: Maven Clinic
+    ats: greenhouse
+    board_token: mavenclinic
+    active: true
+  # industry: digital-health | 24 open roles, 1 matched target titles (2026-10-16)
+  - name: Talkspace
+    ats: greenhouse
+    board_token: talkspace
+    active: true
+  # industry: health-data | 79 open roles, 4 matched target titles (2026-10-16)
+  - name: Garner Health
+    ats: greenhouse
+    board_token: garnerhealth
+    active: true
+  # industry: health-data | 37 open roles, 0 matched target titles (2026-10-16)
+  - name: Truveta
+    ats: greenhouse
+    board_token: truveta
+    active: true
+  # industry: health-ai | 75 open roles, 2 matched target titles (2026-10-16)
+  - name: Cohere Health
+    ats: greenhouse
+    board_token: coherehealth
+    active: true
+  # industry: health-ai | 7 open roles, 1 matched target titles (2026-10-16)
+  - name: Infinitus
+    ats: ashby
+    board_token: infinitus
+    active: true
+  # industry: digital-health | 38 open roles, 1 matched target titles (2026-10-16)
+  - name: Rula
+    ats: ashby
+    board_token: rula
+    active: true
+  # industry: health-ai | 5 open roles, 0 matched target titles (2026-10-16)
+  - name: Curai Health
+    ats: lever
+    board_token: curai
+    active: true
+  # industry: health-data | 5 open roles, 0 matched target titles (2026-10-16)
+  - name: Nuna
+    ats: ashby
+    board_token: nuna
+    active: true
+  # industry: payer | 56 open roles, 0 matched target titles (2026-10-16)
+  - name: Clover Health
+    ats: greenhouse
+    board_token: cloverhealth
+    active: true
+  # industry: healthtech | 24 open roles, 2 matched target titles (2026-10-16)
+  - name: Healthie
+    ats: greenhouse
+    board_token: healthie
+    active: true
+  # industry: provider | 258 open roles, 1 matched target titles (2026-10-16)
+  - name: Charlie Health
+    ats: greenhouse
+    board_token: charliehealth
+    active: true
+  # industry: digital-health | 49 open roles, 2 matched target titles (2026-10-16)
+  - name: Sword Health
+    ats: greenhouse
+    board_token: swordhealth
+    active: true
+  # industry: clinical-trials | 20 open roles, 0 matched target titles (2026-10-16)
+  - name: Formation Bio
+    ats: greenhouse
+    board_token: formationbio
+    active: true
+  # industry: health-ai | 9 open roles, 1 matched target titles (2026-10-16)
+  - name: AKASA
+    ats: ashby
+    board_token: akasa
+    active: true
+  # industry: digital-health | 76 open roles, 3 matched target titles (2026-10-16)
+  - name: Hinge Health
+    ats: ashby
+    board_token: hinge-health
+    active: true
+  # industry: b2b-saas | 898 open roles, 200 matched target titles (2026-10-16)
+  - name: Databricks
+    ats: greenhouse
+    board_token: databricks
+    active: true
+  # industry: b2b-saas | 128 open roles, 1 matched target titles (2026-10-16)
+  - name: Notion
+    ats: ashby
+    board_token: notion
+    active: true
+  # industry: ai-saas | 143 open roles, 11 matched target titles (2026-10-16)
+  - name: Decagon
+    ats: ashby
+    board_token: decagon
+    active: true
+  # industry: ai-llm | 118 open roles, 8 matched target titles (2026-10-16)
+  - name: Cohere
+    ats: ashby
+    board_token: cohere
+    active: true
+  # industry: ai-llm | 133 open roles, 8 matched target titles (2026-10-16)
+  - name: Perplexity
+    ats: ashby
+    board_token: perplexity
+    active: true
+  # industry: ai-saas | 47 open roles, 4 matched target titles (2026-10-16)
+  - name: Writer
+    ats: ashby
+    board_token: writer
+    active: true
