@@ -9,7 +9,7 @@ name: run
 
 on:
   schedule:
-    - cron: "17 1,5,15,19,23 * * *"   # UTC, off the hour
+    - cron: "17 1,14,19 * * *"   # UTC, off the hour
   workflow_dispatch: {}
 
 concurrency:
