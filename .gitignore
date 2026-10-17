@@ -1,0 +1,32 @@
+# --- PII: never commit ---
+profile/*
+!profile/profile.example.yaml
+!profile/README.md
+.env
+*.db
+*.sqlite
+# --- runtime output ---
+/var/
+/out/
+screenshots/
+*.png
+!tests/fixtures/*.png
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*.egg-info/
+# --- secrets / PII (belt and braces) ---
+.env*
+!.env.example
+*.pdf
+*.docx
+profile*.json
+**/profile*.json
+screenshots/
+*.jpg
+*.jpeg
+*.webp
+Screenshot*
+*.eml
+!tests/fixtures/*.eml
