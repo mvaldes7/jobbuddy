@@ -293,3 +293,28 @@ companies:
     ats: ashby
     board_token: writer
     active: true
+  # industry: health-ai | 23 open roles, 3 matched target titles (2026-10-16)
+  - name: Qualified Health
+    ats: ashby
+    board_token: qualified-health-pbc
+    active: true
+  # industry: health-ai | 38 open roles, 1 matched target titles (2026-10-16)
+  - name: Hippocratic AI
+    ats: ashby
+    board_token: Hippocratic%20AI
+    active: true
+  # industry: digital-health | 18 open roles, 2 matched target titles (2026-10-16)
+  - name: Color Health
+    ats: ashby
+    board_token: color-health
+    active: true
+  # industry: digital-health | 84 open roles, 5 matched target titles (2026-10-16)
+  - name: Spring Health
+    ats: ashby
+    board_token: deaa6ad2-d184-436b-b69e-17f761da1d94
+    active: true
+  # industry: health-data | 124 open roles, 2 matched target titles (2026-10-16)
+  - name: Datavant
+    ats: greenhouse
+    board_token: datavant2
+    active: true
