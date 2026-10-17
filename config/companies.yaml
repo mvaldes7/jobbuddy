@@ -318,3 +318,51 @@ companies:
     ats: greenhouse
     board_token: datavant2
     active: true
+  # industry: health-data | 148 open roles, 3 matched target titles (2026-10-17)
+  - name: Tempus
+    ats: workday
+    workday:
+      host: tempus.wd5.myworkdayjobs.com
+      tenant: tempus
+      site: Tempus_Careers
+    active: true
+  # industry: clinical-trials | 5 open roles, 0 matched target titles (2026-10-17)
+  - name: Medable
+    ats: workday
+    workday:
+      host: medable.wd503.myworkdayjobs.com
+      tenant: medable
+      site: explore-career-opportunities
+    active: true
+  # industry: payer | 69 open roles, 1 matched target titles (2026-10-17)
+  - name: Devoted Health
+    ats: workday
+    workday:
+      host: devoted.wd1.myworkdayjobs.com
+      tenant: devoted
+      site: Devoted
+    active: true
+  # industry: biotech | 9 open roles, 0 matched target titles (2026-10-17)
+  - name: 23andMe
+    ats: workday
+    workday:
+      host: 23andme.wd5.myworkdayjobs.com
+      tenant: 23andme
+      site: "23"
+    active: true
+  # industry: health-data | 84 open roles, 7 matched target titles (2026-10-17)
+  - name: Verily
+    ats: workday
+    workday:
+      host: verily.wd1.myworkdayjobs.com
+      tenant: verily
+      site: Verily_Careers
+    active: true
+  # industry: provider | 34 open roles, 0 matched target titles (2026-10-17)
+  - name: Cityblock Health
+    ats: workday
+    workday:
+      host: cityblockhealth.wd1.myworkdayjobs.com
+      tenant: cityblockhealth
+      site: CityblockExternalCareerSite
+    active: true
