@@ -67,13 +67,13 @@ jobs:
             END IF;
 
             -- Dashboard role: read everything, insert approvals and audit events only.
-            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'jobbuddy_dash') THEN
-              GRANT USAGE ON SCHEMA public TO jobbuddy_dash;
-              GRANT SELECT ON ALL TABLES IN SCHEMA public TO jobbuddy_dash;
-              ALTER DEFAULT PRIVILEGES FOR ROLE jobbuddy_owner IN SCHEMA public GRANT SELECT ON TABLES TO jobbuddy_dash;
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'jobbuddy_dashboard') THEN
+              GRANT USAGE ON SCHEMA public TO jobbuddy_dashboard;
+              GRANT SELECT ON ALL TABLES IN SCHEMA public TO jobbuddy_dashboard;
+              ALTER DEFAULT PRIVILEGES FOR ROLE jobbuddy_owner IN SCHEMA public GRANT SELECT ON TABLES TO jobbuddy_dashboard;
               FOREACH t IN ARRAY ARRAY['approvals', 'application_events'] LOOP
                 IF to_regclass('public.' || t) IS NOT NULL THEN
-                  EXECUTE format('GRANT INSERT ON public.%I TO jobbuddy_dash', t);
+                  EXECUTE format('GRANT INSERT ON public.%I TO jobbuddy_dashboard', t);
                   -- Owned sequences: serial/bigserial (deptype 'a') and identity columns (deptype 'i').
                   FOR seq IN
                     SELECT DISTINCT d.objid::regclass::text
@@ -84,7 +84,7 @@ jobs:
                       AND d.refobjid = to_regclass('public.' || t)
                       AND d.deptype IN ('a', 'i')
                   LOOP
-                    EXECUTE format('GRANT USAGE ON SEQUENCE %s TO jobbuddy_dash', seq);
+                    EXECUTE format('GRANT USAGE ON SEQUENCE %s TO jobbuddy_dashboard', seq);
                   END LOOP;
                 END IF;
               END LOOP;
@@ -97,7 +97,7 @@ jobs:
               conn.execute(GRANTS)
               row = conn.execute(
                   "SELECT (SELECT count(*) FROM pg_roles WHERE rolname = 'jobbuddy_app'),"
-                  "       (SELECT count(*) FROM pg_roles WHERE rolname = 'jobbuddy_dash')"
+                  "       (SELECT count(*) FROM pg_roles WHERE rolname = 'jobbuddy_dashboard')"
               ).fetchone()
-          print(f"grants re-asserted (jobbuddy_app present={bool(row[0])}, jobbuddy_dash present={bool(row[1])})")
+          print(f"grants re-asserted (jobbuddy_app present={bool(row[0])}, jobbuddy_dashboard present={bool(row[1])})")
           PY
