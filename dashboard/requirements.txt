@@ -1,0 +1,5 @@
+# Deliberately light: no playwright, no torch. Deployable to Azure App Service F1.
+streamlit>=1.35
+sqlalchemy>=2.0.30
+psycopg[binary]>=3.2,<4
+pandas>=2.2

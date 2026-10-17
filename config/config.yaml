@@ -1,0 +1,73 @@
+# jobbuddy runtime configuration. Secrets never go here (see .env.example).
+fetch:
+  user_agent: "jobbuddy/0.1 (personal job search; contact via repo owner)"
+  request_delay_seconds: 1.5      # polite delay between requests to the same host
+  max_retries: 3
+  timeout_seconds: 30
+  workday_page_size: 20
+  workday_max_pages: 5
+  probe_ats_for_email_leads: true  # ingest-alert-email: try public Greenhouse/Lever/Ashby APIs for the employer
+
+matching:
+  title_keywords_any:
+    - product solution architect
+    - solutions architect
+    - solution architect
+    - technical product manager
+    - product manager
+    - product development lead
+    - product owner
+  title_exclude:
+    - intern
+    - junior
+    - associate product manager
+    - sales engineer
+    - director of sales
+  locations_any:
+    - san francisco
+    - bay area
+    - oakland
+    - san jose
+    - palo alto
+    - mountain view
+    - south san francisco
+    - redwood city
+    - menlo park
+  allow_remote: true
+  remote_country_allow: ["us", "usa", "united states", "north america", "anywhere"]
+  min_salary: null               # falls back to profile.application_answers.salary_floor when numeric
+  max_posting_age_days: 30
+  required_keywords_any: []      # e.g. ["healthcare", "clinical", "llm"]; empty = no requirement
+  excluded_keywords:
+    - active security clearance
+    - ts/sci
+  similarity_threshold: 0.30      # CI: below this (MiniLM cosine vs profile) the agent never sees the job
+  agent_score_threshold: 70      # on-box agent score (prompts/score_rubric.md) needed to tailor/apply
+
+tailoring:
+  max_bullets_per_role: 6
+  min_bullet_overlap: 0.35       # token overlap with the source bullet required to accept a reword
+  output_formats: ["docx", "pdf"]
+
+engine:
+  headless: true
+  max_steps: 12
+  min_confidence_autofill: 0.75  # below this a field is listed for human review
+  llm_confidence_cap: 0.80       # model-sourced values never exceed this
+  agent_answer_confidence: 0.85  # answers written by the on-box agent (field_questions)
+  typing_delay_ms: [45, 140]
+  action_delay_ms: [350, 1200]
+  navigation_timeout_ms: 45000
+  how_did_you_hear_default: "Company careers page"
+
+pipeline:
+  daily_application_cap: 5
+  max_fills_per_run: 3
+  run_time_budget_minutes: 20    # workflow timeout is 25; leave headroom
+  auto_submit: false             # AUTO_SUBMIT env var overrides; default stays false
+  dry_run: false
+
+agent:                           # on-box AI agent work queues (no LLM API is called by jobbuddy itself)
+  default_pull_limit: 10
+  max_description_chars: 8000
+  max_cover_letter_words: 450

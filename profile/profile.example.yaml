@@ -1,0 +1,130 @@
+# Example profile with FICTIONAL data. Copy to profile/profile.yaml and replace with real facts.
+# Tests use this file so the repo never needs real PII. Values starting with "TODO" are unknown.
+schema_version: 1
+
+personal:
+  full_name: "Alex Q. Example"
+  first_name: "Alex"
+  middle_initial: "Q."
+  last_name: "Example"
+  preferred_name: "Alex"
+  email: "alex.example@example.com"
+  phone: "555-010-0199"
+  linkedin: "https://www.linkedin.com/in/alex-example/"
+  website: null
+  location:
+    city: "San Francisco"
+    state: "CA"
+    country: "United States"
+    postal_code: "TODO: optional postal code"
+
+headline: "Product Solution Architect"
+years_experience: 8
+summary: >-
+  Product Solution Architect with 8 years of building and scaling technical solutions in clinical
+  trial and HealthTech software, owning the full cycle from requirements to shipped products.
+
+experience:
+  - company: "Example Health Software, Inc."
+    location: "Remote"
+    start: "01/2019"
+    end: "Present"
+    roles:
+      - title: "Product Solution Architect"
+        start: "06/2023"
+        end: "Present"
+        bullets:
+          - id: ex-ai-agents
+            text: >-
+              Spearheaded the adoption of AI agents across DevOps and product workflows, including
+              agents for bug triage, automated documentation, and test data generation.
+          - id: ex-mobile-app
+            text: >-
+              Personally designed and built a clinical trial site mobile application using
+              LLM-assisted development, delivering a fully validated app in three months.
+          - id: ex-bug-cycle
+            text: >-
+              Decreased bug resolution cycle time by 66% and improved overall product stability.
+          - id: ex-releases
+            text: >-
+              Delivered 7 product releases with a 30% drop in post-release issues.
+      - title: "Business System Analyst"
+        start: "01/2019"
+        end: "05/2023"
+        bullets:
+          - id: ex-knime
+            text: >-
+              Improved data loading performance by 85% through KNIME analytics.
+          - id: ex-biobank
+            text: >-
+              Configured an enterprise biobanking platform to handle over 3 million biological samples.
+          - id: ex-sdlc
+            text: >-
+              Led agile teams through project lifecycles in compliance with 21 CFR Part 11.
+
+education:
+  - degree: "M.S. Applied Information Technology"
+    school: "Example University"
+    year: 2022
+
+certifications:
+  - name: "Product Management Professional Certificate"
+    issuer: "Aha!"
+    year: 2025
+
+skills:
+  - Product Management
+  - AI Agent Development
+  - LLM Application Development
+  - Data Architecture & Pipeline Design
+  - Agile SDLC
+  - Regulatory Compliance
+  - SQL Server
+  - KNIME
+  - JIRA
+
+voice:
+  sample_path: null
+  sample_text: >-
+    Years ago, a hard experience showed me that healthcare technology either eases someone's worst
+    moment or adds to it. When our team lacked bandwidth, I built it myself. I'd welcome the
+    opportunity to talk further.
+  personal_hook: >-
+    A hard experience years ago showed me that healthcare technology either eases someone's worst
+    moment or adds to it.
+  traits:
+    - "Personal opening hook"
+    - "Concrete metrics"
+    - "Built-it-myself ownership"
+    - "Warm close"
+
+application_answers:
+  work_authorization: "TODO: confirm"
+  requires_sponsorship: "TODO: yes/no"
+  salary_floor: "TODO: number"
+  salary_expectation_text: "TODO: text"
+  start_date: "TODO: notice period"
+  willing_to_relocate: "TODO: yes/no"
+  how_did_you_hear: "Company careers page"
+  eeo_reviewed: false
+  eeo:
+    gender: "Decline to answer"
+    race_ethnicity: "Decline to answer"
+    hispanic_latino: "Decline to answer"
+    veteran_status: "Decline to answer"
+    disability_status: "Decline to answer"
+    sexual_orientation: "Decline to answer"
+    pronouns: "Decline to answer"
+
+targets:
+  titles_confirmed: false
+  titles:
+    - Product Solution Architect
+    - Technical Product Manager
+    - Product Manager (AI/LLM)
+    - Solutions Architect (HealthTech)
+    - Product Development Lead
+  locations:
+    - San Francisco Bay Area
+    - Remote (US)
+  remote_ok: true

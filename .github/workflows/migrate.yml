@@ -1,0 +1,103 @@
+# Schema migrations. The ONLY workflow that sees DATABASE_URL_DIRECT (owner role, non-pooled).
+# Runs on push to main when migrations change, or manually. Merging such a change APPLIES it to Neon.
+name: migrate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "migrations/**"
+      - "alembic.ini"
+      - ".github/workflows/migrate.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: migrate
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  alembic-upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL_DIRECT: ${{ secrets.DATABASE_URL_DIRECT }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install migration dependencies only
+        run: pip install "sqlalchemy>=2.0.30" "alembic>=1.13" "psycopg[binary]>=3.2,<4" "pgvector>=0.3"
+
+      - name: alembic upgrade head
+        run: alembic upgrade head
+
+      - name: Re-assert least-privilege grants (idempotent, owner)
+        run: |
+          python - <<'PY'
+          import os
+          import psycopg
+
+          url = os.environ["DATABASE_URL_DIRECT"]
+          # psycopg wants a libpq URL; the secret is in SQLAlchemy form.
+          for prefix in ("postgresql+psycopg://", "postgres://"):
+              if url.startswith(prefix):
+                  url = "postgresql://" + url[len(prefix):]
+
+          GRANTS = r"""
+          DO $$
+          DECLARE
+            t   text;
+            seq text;
+          BEGIN
+            -- Pipeline role: DML on everything, no DDL.
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'jobbuddy_app') THEN
+              GRANT USAGE ON SCHEMA public TO jobbuddy_app;
+              GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO jobbuddy_app;
+              GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO jobbuddy_app;
+            END IF;
+
+            -- Dashboard role: read everything, insert approvals and audit events only.
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'jobbuddy_dash') THEN
+              GRANT USAGE ON SCHEMA public TO jobbuddy_dash;
+              GRANT SELECT ON ALL TABLES IN SCHEMA public TO jobbuddy_dash;
+              ALTER DEFAULT PRIVILEGES FOR ROLE jobbuddy_owner IN SCHEMA public GRANT SELECT ON TABLES TO jobbuddy_dash;
+              FOREACH t IN ARRAY ARRAY['approvals', 'application_events'] LOOP
+                IF to_regclass('public.' || t) IS NOT NULL THEN
+                  EXECUTE format('GRANT INSERT ON public.%I TO jobbuddy_dash', t);
+                  -- Owned sequences: serial/bigserial (deptype 'a') and identity columns (deptype 'i').
+                  FOR seq IN
+                    SELECT DISTINCT d.objid::regclass::text
+                    FROM pg_depend d
+                    JOIN pg_class c ON c.oid = d.objid AND c.relkind = 'S'
+                    WHERE d.classid = 'pg_class'::regclass
+                      AND d.refclassid = 'pg_class'::regclass
+                      AND d.refobjid = to_regclass('public.' || t)
+                      AND d.deptype IN ('a', 'i')
+                  LOOP
+                    EXECUTE format('GRANT USAGE ON SEQUENCE %s TO jobbuddy_dash', seq);
+                  END LOOP;
+                END IF;
+              END LOOP;
+            END IF;
+          END
+          $$;
+          """
+
+          with psycopg.connect(url, prepare_threshold=None) as conn:
+              conn.execute(GRANTS)
+              row = conn.execute(
+                  "SELECT (SELECT count(*) FROM pg_roles WHERE rolname = 'jobbuddy_app'),"
+                  "       (SELECT count(*) FROM pg_roles WHERE rolname = 'jobbuddy_dash')"
+              ).fetchone()
+          print(f"grants re-asserted (jobbuddy_app present={bool(row[0])}, jobbuddy_dash present={bool(row[1])})")
+          PY

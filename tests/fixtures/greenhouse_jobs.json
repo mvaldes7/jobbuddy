@@ -1,0 +1,7 @@
+{"jobs": [
+  {"id": 4012345, "title": "Senior Product Solution Architect", "absolute_url": "https://boards.greenhouse.io/acmehealth/jobs/4012345",
+   "location": {"name": "San Francisco, CA"}, "updated_at": "2026-10-10T12:00:00-04:00", "first_published": "2026-10-08T09:00:00-04:00",
+   "content": "&lt;p&gt;Acme Health builds clinical trial software. You will lead &lt;strong&gt;AI agent&lt;/strong&gt; adoption.&lt;/p&gt;&lt;p&gt;Salary range: $160,000 - $195,000&lt;/p&gt;"},
+  {"id": 4012399, "title": "Staff Accountant", "absolute_url": "https://boards.greenhouse.io/acmehealth/jobs/4012399",
+   "location": {"name": "Boston, MA"}, "updated_at": "2026-10-11T12:00:00Z", "content": "&lt;p&gt;Accounting role.&lt;/p&gt;"}
+]}

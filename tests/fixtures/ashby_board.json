@@ -1,0 +1,9 @@
+{"jobs": [
+  {"id": "f0e1d2c3-aaaa-bbbb-cccc-000011112222", "title": "Solutions Architect (HealthTech)", "location": "San Francisco",
+   "isRemote": false, "workplaceType": "Hybrid", "isListed": true,
+   "jobUrl": "https://jobs.ashbyhq.com/exampleai/f0e1d2c3-aaaa-bbbb-cccc-000011112222",
+   "applyUrl": "https://jobs.ashbyhq.com/exampleai/f0e1d2c3-aaaa-bbbb-cccc-000011112222/application",
+   "descriptionPlain": "Design integrations for hospital customers.", "publishedAt": "2026-10-12T00:00:00.000Z",
+   "compensation": {"compensationTiers": [{"components": [{"compensationType": "Salary", "minValue": 170000, "maxValue": 210000, "currencyCode": "USD"}]}]}},
+  {"id": "unlisted-1", "title": "Hidden", "isListed": false, "jobUrl": "https://jobs.ashbyhq.com/exampleai/x"}
+]}

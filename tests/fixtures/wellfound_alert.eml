@@ -1,0 +1,38 @@
+From: Wellfound <talent@wellfound.com>
+To: someone@example.com
+Subject: 3 new jobs matching "Product Manager" this week
+Date: Wed, 14 Oct 2026 09:30:00 -0700
+Message-ID: <digest-77@mail.wellfound.example>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="b1"
+
+--b1
+Content-Type: text/plain; charset="utf-8"
+
+Technical Product Manager
+Acme Health · San Francisco · Remote (US)
+$150k – $190k · 0.1% – 0.5%
+https://wellfound.com/jobs/2901001-technical-product-manager
+
+--b1
+Content-Type: text/html; charset="utf-8"
+
+<html><body>
+<h2>New jobs for you</h2>
+<table>
+<tr><td><a href="https://wellfound.com/company/acme-health?utm_source=digest">Acme Health</a></td></tr>
+<tr><td><a href="https://wellfound.com/jobs/2901001-technical-product-manager?utm_source=digest">Technical Product Manager</a></td></tr>
+<tr><td><span>San Francisco · Remote (US)</span></td></tr>
+<tr><td><span>$150k – $190k · 0.1% – 0.5%</span></td></tr>
+<tr><td><a href="https://wellfound.com/jobs/2901001-technical-product-manager">View job</a></td></tr>
+
+<tr><td><a href="https://wellfound.com/company/tinyclinic/jobs/2902002-product-manager-ai-llm">TinyClinic is hiring a Product Manager (AI/LLM)</a></td></tr>
+<tr><td><span>Remote</span></td></tr>
+<tr><td><span>$140k – $170k · 0.25% – 1.0%</span></td></tr>
+
+<tr><td><a href="https://angel.co/company/oldco/jobs/2903003-solutions-architect-healthtech">Solutions Architect (HealthTech)</a></td></tr>
+<tr><td><span>OldCo · New York, NY</span></td></tr>
+<tr><td><a href="https://wellfound.com/jobs?utm_source=digest">See all jobs</a></td></tr>
+</table>
+</body></html>
+--b1--

@@ -1,0 +1,72 @@
+<!doctype html>
+<html><head><title>Apply</title>
+<style>
+  .visually-hidden { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+  .field { margin: 8px 0; }
+</style>
+</head>
+<body>
+<form id="application_form" onsubmit="event.preventDefault(); window.__submitted = true; document.body.insertAdjacentHTML('beforeend','<p id=done>Thank you for applying</p>');">
+  <div class="field"><label for="first_name">First Name <span>*</span></label>
+    <input type="text" id="first_name" name="first_name" required></div>
+  <div class="field"><label for="last_name">Last Name *</label>
+    <input type="text" id="last_name" name="last_name" aria-required="true"></div>
+  <div class="field">
+    <input type="email" id="email" name="email" aria-label="Email" required></div>
+  <div class="field">
+    <input type="tel" id="phone" name="phone" placeholder="Phone"></div>
+  <div class="field"><label for="resume">Resume/CV *</label>
+    <button type="button" onclick="document.getElementById('resume').click()">Attach</button>
+    <input type="file" id="resume" name="resume" class="visually-hidden" accept=".pdf,.doc,.docx" required></div>
+  <div class="field"><label for="cover_letter">Cover Letter</label>
+    <input type="file" id="cover_letter" name="cover_letter" class="visually-hidden" accept=".pdf,.doc,.docx"></div>
+  <div class="field">
+    <div class="label-text">LinkedIn Profile</div>
+    <input type="text" name="job_application[answers_attributes][0][text_value]" id="question_1001"></div>
+  <div class="field">
+    <span id="q2_label">Are you legally authorized to work in the United States? *</span>
+    <select id="question_1002" name="job_application[answers_attributes][1][boolean_value]" aria-labelledby="q2_label" required>
+      <option value="">Please select</option><option value="1">Yes</option><option value="0">No</option>
+    </select></div>
+  <div class="field"><label for="question_1003">Will you now or in the future require sponsorship for employment visa status?</label>
+    <select id="question_1003" name="job_application[answers_attributes][2][boolean_value]">
+      <option value="">Please select</option><option value="1">Yes</option><option value="0">No</option>
+    </select></div>
+  <div class="field"><label for="question_1004">Why do you want to work at Acme Health?</label>
+    <textarea id="question_1004" name="job_application[answers_attributes][3][text_value]" maxlength="1500"></textarea></div>
+  <div class="field"><label for="question_1005">How did you hear about this job?</label>
+    <select id="question_1005" name="job_application[answers_attributes][4][text_value]">
+      <option value="">Select...</option><option>LinkedIn</option><option>Company Website</option>
+      <option>Referral</option><option>Other</option></select></div>
+  <div class="field"><jb-web-field></jb-web-field></div>
+  <fieldset><legend>Voluntary Self-Identification</legend>
+    <div class="field"><label for="gender">Gender</label>
+      <select id="gender" name="job_application[gender]"><option value="">Please select</option>
+        <option value="1">Male</option><option value="2">Female</option><option value="3">Decline To Self Identify</option></select></div>
+    <div class="field"><label for="veteran_status">Veteran Status</label>
+      <select id="veteran_status" name="job_application[veteran_status]"><option value="">Please select</option>
+        <option value="1">I am not a protected veteran</option>
+        <option value="2">I identify as one or more of the classifications of protected veteran</option>
+        <option value="3">I don't wish to answer</option></select></div>
+    <div class="field"><label for="disability_status">Disability Status</label>
+      <select id="disability_status" name="job_application[disability_status]"><option value="">Please select</option>
+        <option value="1">Yes, I have a disability (or previously had a disability)</option>
+        <option value="2">No, I do not have a disability and have not had one in the past</option>
+        <option value="3">I do not want to answer</option></select></div>
+  </fieldset>
+  <div class="field"><label><input type="checkbox" id="consent" name="data_consent"> I acknowledge the candidate privacy notice</label></div>
+  <button type="submit" id="submit_app">Submit Application</button>
+</form>
+<script>
+  // A custom element with an OPEN shadow root (inspector must pierce it).
+  class JbWebField extends HTMLElement {
+    constructor() {
+      super();
+      const root = this.attachShadow({ mode: 'open' });
+      root.innerHTML = '<label for="website_input">Website</label><input id="website_input" name="website" type="url">';
+    }
+  }
+  customElements.define('jb-web-field', JbWebField);
+  window.__submitted = false;
+</script>
+</body></html>

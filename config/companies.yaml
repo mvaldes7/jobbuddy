@@ -1,0 +1,27 @@
+# Target employer boards. Only PUBLIC ATS endpoints published by the employer are used.
+# ats: greenhouse | lever | ashby | workday | bamboohr
+# The entries below are illustrative examples - verify each board token before enabling.
+companies:
+  - name: Example Health (Greenhouse)
+    ats: greenhouse
+    board_token: examplehealth
+    active: false
+  - name: Example Bio (Lever)
+    ats: lever
+    board_token: examplebio
+    active: false
+  - name: Example AI (Ashby)
+    ats: ashby
+    board_token: exampleai
+    active: false
+  - name: Example Hospital System (Workday)
+    ats: workday
+    workday:
+      host: example.wd5.myworkdayjobs.com
+      tenant: example
+      site: External
+    active: false
+  - name: Example Clinic (BambooHR)
+    ats: bamboohr
+    board_token: exampleclinic
+    active: false

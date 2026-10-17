@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jobbuddy"
+version = "0.1.0"
+description = "Human-in-the-loop job application automation for Michael A. Valdés"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+dependencies = [
+  "sqlalchemy>=2.0.30",
+  "alembic>=1.13",
+  "psycopg[binary]>=3.2,<4",
+  "pgvector>=0.3",
+  "pydantic>=2.6",
+  "pydantic-settings>=2.2",
+  "pyyaml>=6.0",
+  "httpx>=0.27",
+  "typer>=0.12",
+  "python-docx>=1.1",
+  "playwright>=1.44",
+  "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+embeddings = ["sentence-transformers>=2.7"]
+mssql = ["pyodbc>=5.1"]
+pdf = ["docx2pdf>=0.1.8"]
+dashboard = ["streamlit>=1.35", "pandas>=2.2"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "respx>=0.21"]
+
+[project.scripts]
+jobbuddy = "jobbuddy.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["jobbuddy*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+markers = [
+  "browser: requires Playwright Chromium",
+  "slow: slow tests (LibreOffice PDF conversion)",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.setuptools.package-data]
+jobbuddy = ["prompts/*.md"]

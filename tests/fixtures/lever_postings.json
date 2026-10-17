@@ -1,0 +1,10 @@
+[
+  {"id": "a1b2c3d4-0000-1111-2222-333344445555", "text": "Technical Product Manager, AI Platform",
+   "hostedUrl": "https://jobs.lever.co/examplebio/a1b2c3d4-0000-1111-2222-333344445555",
+   "applyUrl": "https://jobs.lever.co/examplebio/a1b2c3d4-0000-1111-2222-333344445555/apply",
+   "categories": {"location": "Remote - US", "commitment": "Full-time", "team": "Product"},
+   "workplaceType": "remote", "createdAt": 1791000000000,
+   "descriptionPlain": "Own the roadmap for our LLM platform used by clinical teams.",
+   "lists": [{"text": "Requirements", "content": "<li>5+ years product management</li><li>Healthcare experience</li>"}],
+   "salaryRange": {"min": 150000, "max": 185000, "currency": "USD", "interval": "per-year-salary"}}
+]
