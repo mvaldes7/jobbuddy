@@ -1,0 +1,9 @@
+<!doctype html>
+<html><head><title>Apply</title></head><body>
+<form onsubmit="event.preventDefault(); window.__submitted = true;">
+  <label for="fn">First Name</label><input id="fn" name="first_name">
+  <div class="grecaptcha-badge" style="width:256px;height:60px"><iframe title="reCAPTCHA" src="about:blank?size=invisible"></iframe></div>
+  <button type="submit">Submit Application</button>
+</form>
+<script>window.__submitted = false;</script>
+</body></html>

@@ -1,0 +1,210 @@
+"""Multi-step form filling loop.
+
+Invariant: the final Submit button is NEVER clicked unless an ApprovalToken (issued only by
+engine.submitter after verifying an approval record in the DB) is passed in.
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+import re
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Callable
+
+from jobbuddy.config import EngineConfig
+from jobbuddy.engine.detectors import detect_blockers
+from jobbuddy.engine.field_mapper import FieldMapper, MapperContext, low_confidence_items, needs_cover_letter
+from jobbuddy.engine.form_inspector import frame_for, inspect_page
+from jobbuddy.engine.human import Human
+from jobbuddy.engine.models import Button, FieldMapping, FillResult, FormField, StepRecord
+
+log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ApprovalToken:
+    application_id: int
+    approved_via: str
+    _issued_by_submitter: bool = False
+
+    def valid_for(self, application_id: int | None) -> bool:
+        return self._issued_by_submitter and application_id is not None and application_id == self.application_id
+
+
+@dataclass
+class FillContext:
+    mapper_ctx: MapperContext
+    engine_cfg: EngineConfig
+    screenshot_dir: Path
+    application_id: int | None = None
+    resume_path: Path | None = None
+    cover_letter_path: Callable[[], Path | None] | None = None
+    human: Human = field(default_factory=Human)
+    on_cover_letter_needed: Callable[[], None] | None = None
+
+
+class FormFiller:
+    def __init__(self, ctx: FillContext) -> None:
+        self.ctx = ctx
+        self.mapper = FieldMapper(ctx.mapper_ctx)
+        self.adapter = ctx.mapper_ctx.adapter
+
+    async def _screenshot(self, page: Any, tag: str) -> str:
+        self.ctx.screenshot_dir.mkdir(parents=True, exist_ok=True)
+        path = self.ctx.screenshot_dir / f"app{self.ctx.application_id or 0}_{tag}_{int(time.time())}.png"
+        await page.screenshot(path=str(path), full_page=True)
+        return str(path)
+
+    async def _settle(self, page: Any) -> None:
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=15000)
+            await page.wait_for_load_state("networkidle", timeout=5000)
+        except Exception:
+            pass
+
+    async def _apply(self, page: Any, f: FormField, m: FieldMapping) -> str | None:
+        if m.value in (None, "", []):
+            return None
+        frame = frame_for(page, f.frame_index)
+        loc = frame.locator(f.selector).first
+        h = self.ctx.human
+        try:
+            if f.type == "file":
+                path = self._file_for(m)
+                if path is None:
+                    return f"{f.field_id}: no file available for {m.file_kind}"
+                await loc.set_input_files(str(path))
+            elif f.type == "select":
+                try:
+                    await loc.select_option(label=str(m.value))
+                except Exception:
+                    await loc.select_option(value=str(m.value))
+            elif f.type == "custom_select":
+                await loc.click()
+                await h.pause(0.5)
+                opt = frame.get_by_role("option", name=str(m.value), exact=True)
+                if await opt.count() == 0:
+                    opt = frame.locator('[role="option"]', has_text=str(m.value))
+                await opt.first.click()
+            elif f.type == "radio":
+                target = next((o for o in f.options if o.label == m.value or o.value == m.value), None)
+                if target and target.selector:
+                    await frame.locator(target.selector).first.check()
+            elif f.type == "checkbox_group":
+                vals = m.value if isinstance(m.value, list) else [m.value]
+                for o in f.options:
+                    if o.label in vals and o.selector:
+                        await frame.locator(o.selector).first.check()
+            elif f.type == "checkbox":
+                await loc.set_checked(bool(m.value))
+            else:
+                if str(f.current_value or "") == str(m.value):
+                    return None
+                await h.type_into(loc, str(m.value))
+            await h.pause(0.4)
+        except Exception as exc:
+            return f"{f.field_id}: {type(exc).__name__}"
+        return None
+
+    def _file_for(self, m: FieldMapping) -> Path | None:
+        if m.file_kind == "resume":
+            return self.ctx.resume_path
+        if m.file_kind == "cover_letter" and self.ctx.cover_letter_path:
+            return self.ctx.cover_letter_path()
+        return None
+
+    async def run(self, page: Any, approval: ApprovalToken | None = None) -> FillResult:
+        cfg = self.ctx.engine_cfg
+        result = FillResult(status="awaiting_approval")
+        prev_signature: tuple[str, ...] | None = None
+        for step in range(cfg.max_steps):
+            await self._settle(page)
+            blockers = await detect_blockers(page)
+            if blockers:
+                result.status = "paused"
+                result.blockers = blockers
+                result.error = "human needed: " + ", ".join(sorted({b.kind for b in blockers}))
+                result.screenshot_path = await self._screenshot(page, "blocked")
+                result.final_url = page.url
+                return result
+
+            snap = await inspect_page(page, self.adapter.submit_automation_ids, self.adapter.next_automation_ids)
+            signature = tuple(sorted(f.field_id for f in snap.fields)) + (snap.url,)
+            if prev_signature is not None and signature == prev_signature and snap.error_texts:
+                result.status = "paused"
+                result.error = "validation errors after Next: " + "; ".join(snap.error_texts[:5])
+                result.screenshot_path = await self._screenshot(page, "validation")
+                result.final_url = page.url
+                return result
+            prev_signature = signature
+
+            if needs_cover_letter(snap.fields) and self.ctx.on_cover_letter_needed:
+                self.ctx.on_cover_letter_needed()
+            mappings = await asyncio.to_thread(self.mapper.map_fields, snap.fields)
+            errors = [e for e in [await self._apply(page, f, m) for f, m in zip(snap.fields, mappings)] if e]
+            rec = StepRecord(index=step, url=snap.url, fields=snap.fields, mappings=mappings, errors=errors)
+            result.steps.append(rec)
+            result.low_confidence += low_confidence_items(snap.fields, mappings, cfg.min_confidence_autofill)
+
+            live = [b for b in snap.buttons if not b.disabled]
+            submit = next((b for b in live if b.kind == "submit"), None)
+            nxt = next((b for b in live if b.kind == "next"), None)
+            if submit is not None and nxt is None:
+                rec.action = "stopped_before_submit"
+                result.submit_button = submit
+                result.final_url = page.url
+                result.screenshot_path = await self._screenshot(page, "filled")
+                if approval is None or not approval.valid_for(self.ctx.application_id):
+                    result.status = "awaiting_approval"
+                    return result
+                return await self._submit(page, submit, result)
+            if nxt is not None:
+                rec.action = f"next:{nxt.text}"
+                await self.ctx.human.pause()
+                await frame_for(page, nxt.frame_index).locator(nxt.selector).first.click()
+                continue
+            rec.action = "no_navigation"
+            result.status = "failed"
+            result.error = "no Next or Submit button found"
+            result.screenshot_path = await self._screenshot(page, "stuck")
+            result.final_url = page.url
+            return result
+        result.status = "failed"
+        result.error = f"exceeded max_steps={cfg.max_steps}"
+        return result
+
+    async def _submit(self, page: Any, submit: Button, result: FillResult) -> FillResult:
+        """Only reachable with a valid ApprovalToken."""
+        missing = [i for i in result.low_confidence if i["required"] and i["value"] in (None, "", [])]
+        if missing:
+            result.status = "paused"
+            result.error = "required fields still empty: " + ", ".join(i["label"] for i in missing[:5])
+            return result
+        await self.ctx.human.pause()
+        await frame_for(page, submit.frame_index).locator(submit.selector).first.click()
+        await self._settle(page)
+        await asyncio.sleep(2)
+        blockers = await detect_blockers(page)
+        if blockers:  # e.g. an invisible reCAPTCHA escalated to a challenge
+            result.status = "paused"
+            result.blockers = blockers
+            result.error = "challenge after submit click: human needed"
+            result.screenshot_path = await self._screenshot(page, "post_submit_blocked")
+            return result
+        text = ""
+        for fr in page.frames:
+            try:
+                text += " " + (await fr.evaluate("() => document.body ? document.body.innerText : ''"))[:5000]
+            except Exception:
+                pass
+        result.screenshot_path = await self._screenshot(page, "submitted")
+        result.final_url = page.url
+        if any(re.search(p, text, re.I) for p in self.adapter.confirmation_patterns):
+            result.status = "submitted"
+            result.confirmation_text = re.sub(r"\s+", " ", text).strip()[:300]
+        else:
+            result.status = "failed"
+            result.error = "no confirmation detected after submit; verify manually"
+        return result

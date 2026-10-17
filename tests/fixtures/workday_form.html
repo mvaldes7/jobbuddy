@@ -1,0 +1,120 @@
+<!doctype html>
+<html><head><title>Apply - Example Hospital System - Workday</title>
+<style>.step{display:none}.step.active{display:block} [role=listbox]{border:1px solid #999;display:none} [role=listbox].open{display:block}</style>
+</head>
+<body>
+<div data-automation-id="applyFlowPage">
+  <h2 data-automation-id="pageHeader">Product Solution Architect</h2>
+  <ol data-automation-id="progressBar"><li>My Information</li><li>My Experience</li><li>Voluntary Disclosures</li><li>Review</li></ol>
+
+  <section class="step active" data-step="1">
+    <h3>My Information</h3>
+    <div data-automation-id="formField-sourcePrompt">
+      <label id="src_lbl">How Did You Hear About Us? *</label>
+      <button type="button" data-automation-id="sourceDropdown" aria-haspopup="listbox" aria-labelledby="src_lbl" aria-controls="src_lb" aria-required="true">Select One</button>
+      <ul role="listbox" id="src_lb">
+        <li role="option">Job Board</li><li role="option">Company Careers Page</li><li role="option">Employee Referral</li><li role="option">Social Media</li>
+      </ul>
+    </div>
+    <fieldset data-automation-id="formField-previousWorker">
+      <legend>Have you previously worked for Example Hospital System? *</legend>
+      <label><input type="radio" name="previousWorker" value="true" data-automation-id="previousWorker-yes"> Yes</label>
+      <label><input type="radio" name="previousWorker" value="false" data-automation-id="previousWorker-no"> No</label>
+    </fieldset>
+    <div data-automation-id="formField-legalNameSection_firstName">
+      <label for="wd-first">Given Name(s) *</label>
+      <input id="wd-first" data-automation-id="legalNameSection_firstName" type="text" aria-required="true">
+    </div>
+    <div data-automation-id="formField-legalNameSection_lastName">
+      <label for="wd-last">Family Name *</label>
+      <input id="wd-last" data-automation-id="legalNameSection_lastName" type="text" aria-required="true">
+    </div>
+    <div data-automation-id="formField-addressSection_city">
+      <label for="wd-city">City</label>
+      <input id="wd-city" data-automation-id="addressSection_city" type="text">
+    </div>
+    <div data-automation-id="formField-email">
+      <label for="wd-email">Email Address *</label>
+      <input id="wd-email" data-automation-id="email" type="text" aria-required="true">
+    </div>
+    <div data-automation-id="formField-phone-number">
+      <label for="wd-phone">Phone Number *</label>
+      <input id="wd-phone" data-automation-id="phone-number" type="text" aria-required="true">
+    </div>
+  </section>
+
+  <section class="step" data-step="2">
+    <h3>My Experience</h3>
+    <div data-automation-id="formField-resume">
+      <label for="wd-file">Upload a file (5MB max)</label>
+      <input id="wd-file" type="file" data-automation-id="file-upload-input-ref" style="opacity:0;width:1px;height:1px">
+    </div>
+    <div data-automation-id="formField-linkedinQuestion">
+      <label for="wd-li">LinkedIn</label>
+      <input id="wd-li" data-automation-id="linkedinQuestion" type="text">
+    </div>
+  </section>
+
+  <section class="step" data-step="3">
+    <h3>Voluntary Disclosures</h3>
+    <div data-automation-id="formField-gender">
+      <label id="g_lbl">Gender</label>
+      <button type="button" data-automation-id="gender" aria-haspopup="listbox" aria-labelledby="g_lbl" aria-controls="g_lb">Select One</button>
+      <ul role="listbox" id="g_lb"><li role="option">Male</li><li role="option">Female</li><li role="option">I do not wish to answer</li></ul>
+    </div>
+    <div data-automation-id="formField-veteranStatus">
+      <label for="wd-vet">Veteran Status</label>
+      <select id="wd-vet" data-automation-id="veteranStatus"><option value="">Select One</option>
+        <option>I am not a veteran</option><option>I am a protected veteran</option><option>I decline to self-identify</option></select>
+    </div>
+    <div data-automation-id="formField-agreementCheckbox">
+      <label><input type="checkbox" data-automation-id="agreementCheckbox" required> I acknowledge the terms and conditions *</label>
+    </div>
+  </section>
+
+  <section class="step" data-step="4">
+    <h3>Review</h3>
+    <p>Please review your application before submitting.</p>
+  </section>
+
+  <div data-automation-id="errorMessage" id="err" style="display:none"></div>
+  <div data-automation-id="pageFooter">
+    <button type="button" data-automation-id="pageFooterBackButton" id="back">Back</button>
+    <!-- Workday reuses the same button for the final Submit; only the text changes. -->
+    <button type="button" data-automation-id="bottom-navigation-next-button" id="next">Save and Continue</button>
+  </div>
+</div>
+<script>
+  window.__submitted = false;
+  let step = 1;
+  document.querySelectorAll('[aria-haspopup="listbox"]').forEach(btn => {
+    const lb = document.getElementById(btn.getAttribute('aria-controls'));
+    btn.addEventListener('click', () => lb.classList.toggle('open'));
+    lb.querySelectorAll('[role=option]').forEach(o => o.addEventListener('click', () => {
+      btn.textContent = o.textContent; btn.dataset.value = o.textContent; lb.classList.remove('open');
+    }));
+  });
+  function validate(n) {
+    const sec = document.querySelector('[data-step="' + n + '"]');
+    const missing = [];
+    sec.querySelectorAll('input[aria-required="true"], input[required]').forEach(i => {
+      if ((i.type === 'checkbox' && !i.checked) || (i.type !== 'checkbox' && !i.value)) missing.push(i.id || i.dataset.automationId);
+    });
+    if (n === 1 && !document.querySelector('[name=previousWorker]:checked')) missing.push('previousWorker');
+    if (n === 1 && !document.querySelector('[data-automation-id=sourceDropdown]').dataset.value) missing.push('source');
+    return missing;
+  }
+  document.getElementById('next').addEventListener('click', () => {
+    const btn = document.getElementById('next');
+    if (btn.textContent.trim() === 'Submit') { window.__submitted = true; document.body.innerHTML = '<h2>Application Submitted</h2>'; return; }
+    const missing = validate(step);
+    const err = document.getElementById('err');
+    if (missing.length) { err.style.display = 'block'; err.textContent = 'Errors found: ' + missing.join(', '); return; }
+    err.style.display = 'none';
+    document.querySelector('[data-step="' + step + '"]').classList.remove('active');
+    step += 1;
+    document.querySelector('[data-step="' + step + '"]').classList.add('active');
+    if (step === 4) btn.textContent = 'Submit';
+  });
+</script>
+</body></html>

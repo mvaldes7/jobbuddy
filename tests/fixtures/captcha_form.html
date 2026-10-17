@@ -1,0 +1,9 @@
+<!doctype html>
+<html><head><title>Apply</title></head><body>
+<form onsubmit="event.preventDefault(); window.__submitted = true;">
+  <label for="fn">First Name</label><input id="fn" name="first_name">
+  <div class="g-recaptcha" data-sitekey="test-site-key" style="width:304px;height:78px;border:1px solid #ccc">I'm not a robot</div>
+  <button type="submit">Submit Application</button>
+</form>
+<script>window.__submitted = false;</script>
+</body></html>
