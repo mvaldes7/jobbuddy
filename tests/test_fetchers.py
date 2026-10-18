@@ -117,3 +117,25 @@ def test_upsert_is_idempotent(session):
     assert session.query(Job).count() == 2
     j = session.query(Job).filter_by(source="greenhouse", external_job_id="4012345").one()
     assert j.title.endswith("II") and j.first_seen_at == first_seen["4012345"]
+
+
+def test_upsert_jobs_skips_unchanged_rows(session):
+    company = repo.upsert_company(session, name="Acme Health", ats="greenhouse", board_token="acmehealth")
+    postings = parse_greenhouse(load("greenhouse_jobs.json"), "Acme Health")
+    assert repo.upsert_jobs(session, postings, company) == {"new": 2, "updated": 0, "unchanged": 0}
+    session.commit()
+    before = {j.external_job_id: (j.last_seen_at, j.description) for j in session.query(Job)}
+    assert repo.upsert_jobs(session, postings, company) == {"new": 0, "updated": 0, "unchanged": 2}
+    session.commit()
+    session.expire_all()
+    for j in session.query(Job):
+        assert j.last_seen_at >= before[j.external_job_id][0]  # still marked as seen
+        assert j.description == before[j.external_job_id][1]
+    # a content change or a metadata change (apply_url, not in the content hash) goes through upsert_job
+    changed = [postings[0].model_copy(update={"title": "Senior Product Solution Architect II"}),
+               postings[1].model_copy(update={"apply_url": "https://example.com/apply/new"})]
+    assert repo.upsert_jobs(session, changed, company) == {"new": 0, "updated": 2, "unchanged": 0}
+    session.commit()
+    j = session.query(Job).filter_by(source="greenhouse", external_job_id="4012345").one()
+    assert j.title.endswith("II")
+    assert session.query(Job).filter_by(apply_url="https://example.com/apply/new").count() == 1

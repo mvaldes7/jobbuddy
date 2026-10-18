@@ -10,6 +10,7 @@ from typing import Any, Callable, Iterable
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 
 from jobbuddy.db.models import (
     Application,
@@ -84,6 +85,62 @@ def upsert_job(session: Session, posting: JobPosting, company: Company | None = 
     job.content_hash = h
     session.flush()
     return job, created
+
+
+def _unchanged(job: Job, posting: JobPosting, company: Company | None, h: str) -> bool:
+    """True when upsert_job would only bump last_seen_at (same content hash and same metadata)."""
+    if job.content_hash != h:
+        return False
+    company_name = posting.company_name or (company.name if company else job.company_name)
+    lead_meta = {**(job.lead_meta or {}), **posting.lead_meta} if posting.lead_meta else job.lead_meta
+    return (job.company_id == (company.id if company else job.company_id) and job.company_name == company_name
+            and job.url == posting.url and job.apply_url == (posting.apply_url or job.apply_url)
+            and bool(job.remote) == bool(posting.remote) and job.salary_currency == posting.salary_currency
+            and _same_time(job.posted_at, posting.posted_at) and lead_meta == job.lead_meta)
+
+
+def _same_time(a: datetime | None, b: datetime | None) -> bool:
+    if a is None or b is None:
+        return a is b
+    if (a.tzinfo is None) != (b.tzinfo is None):  # SQLite drops tzinfo
+        a, b = a.replace(tzinfo=None), b.replace(tzinfo=None)
+    return a == b
+
+
+def upsert_jobs(session: Session, postings: list[JobPosting], company: Company | None = None,
+                chunk: int = 500) -> dict[str, int]:
+    """Batch form of upsert_job for one board. Existing rows are loaded in a few IN queries; rows whose
+    content and metadata are unchanged only get last_seen_at bumped in one UPDATE per chunk instead of a
+    SELECT + full UPDATE each. New or changed postings go through upsert_job (same semantics as before)."""
+    stats = {"new": 0, "updated": 0, "unchanged": 0}
+    by_source: dict[str, list[JobPosting]] = {}
+    for p in postings:
+        by_source.setdefault(p.source, []).append(p)
+    now = utcnow()
+    for source, items in by_source.items():
+        for i in range(0, len(items), chunk):
+            part = items[i:i + chunk]
+            ids = list({p.external_job_id for p in part})
+            existing = {j.external_job_id: j for j in session.scalars(
+                select(Job).where(Job.source == source, Job.external_job_id.in_(ids)))}
+            same: list[int] = []
+            for p in part:
+                job = existing.get(p.external_job_id)
+                if job is not None and _unchanged(job, p, company, posting_hash(p)):
+                    same.append(job.id)
+                    continue
+                _, created = upsert_job(session, p, company)
+                stats["new" if created else "updated"] += 1
+            if same:
+                session.execute(update(Job).where(Job.id.in_(same)).values(last_seen_at=now)
+                                .execution_options(synchronize_session=False))
+                for jid in same:  # keep loaded objects consistent without another round trip
+                    j = session.get(Job, jid)
+                    if j is not None:
+                        set_committed_value(j, "last_seen_at", now)
+                stats["unchanged"] += len(same)
+    session.flush()
+    return stats
 
 
 # ---------------- applications ----------------

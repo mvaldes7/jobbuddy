@@ -75,6 +75,8 @@ def build_runtime(settings: Settings | None = None, *, session: Session | None =
 
 
 # =============================== fetch ===============================
+FETCH_MIN_SECONDS_LEFT = 150     # stop starting new boards when the run budget is nearly spent
+FILL_MIN_SECONDS_LEFT = 120      # stop starting new fills when the fill slice / run budget is nearly spent
 def sync_companies(session: Session, targets: list[CompanyTarget]) -> dict[str, Company]:
     out = {}
     for t in targets:
@@ -91,21 +93,24 @@ async def stage_fetch(session: Session, rt: Runtime, http: PoliteHttp | None = N
     fc = rt.cfg.fetch
     targets = [t for t in load_companies(rt.settings.companies_path) if t.active]
     companies = sync_companies(session, targets)
-    stats = {"companies": len(targets), "new": 0, "updated": 0, "errors": 0}
+    stats = {"companies": len(targets), "new": 0, "updated": 0, "unchanged": 0, "errors": 0, "skipped_time": 0}
     own_http = http is None
     http = http or PoliteHttp(fc.user_agent, fc.request_delay_seconds, fc.max_retries, fc.timeout_seconds)
     try:
-        for t in targets:
+        for i, t in enumerate(targets):
+            if rt.time_left() < FETCH_MIN_SECONDS_LEFT:
+                stats["skipped_time"] = len(targets) - i
+                log.info("time budget nearly exhausted; skipping fetch for %d remaining companies", len(targets) - i)
+                break
             try:
                 postings = await build_fetcher(t.ats, http, fc).fetch(t)
             except Exception as exc:
                 stats["errors"] += 1
                 log.warning("fetch failed for %s (%s): %s", t.name, t.ats, type(exc).__name__)
                 continue
-            for p in postings:
-                _, created = repo.upsert_job(session, p, companies[t.key])
-                stats["new" if created else "updated"] += 1
-            session.flush()
+            for k, v in repo.upsert_jobs(session, postings, companies[t.key]).items():
+                stats[k] += v
+            session.commit()  # each board is durable even if a later one hits the workflow timeout
     finally:
         if own_http:
             await http.__aexit__(None, None, None)
@@ -298,10 +303,17 @@ async def stage_fill(session: Session, rt: Runtime, app_ids: list[int] | None = 
     if not apps:
         return stats
 
+    fill_started = time.monotonic()
+
+    def fill_time_left() -> float:
+        slice_left = pc.fill_time_budget_minutes * 60 - (time.monotonic() - fill_started)
+        return min(slice_left, rt.time_left())
+
     async def process(context: Any) -> None:
         for app in apps:
-            if rt.time_left() < 120:
-                log.info("time budget nearly exhausted; stopping fills")
+            if fill_time_left() < FILL_MIN_SECONDS_LEFT:
+                log.info("fill time slice nearly exhausted; stopping fills")
+                stats["skipped_time"] = stats.get("skipped_time", 0) + 1
                 break
             job = app.job
             adapter = detect_adapter(job.apply_url or "", app.ats)
@@ -650,8 +662,14 @@ def build_report(session: Session) -> dict[str, Any]:
 
 # =============================== run-ci ===============================
 async def run_ci(session: Session, rt: Runtime, trigger: str = "cron") -> dict[str, Any]:
-    """GitHub Actions entrypoint. Order: decisions -> fetch -> filter/embed -> fill -> notify -> manual-apply digest -> submit -> report.
-    Submit only acts on Telegram/dashboard-approved applications and only when AUTO_SUBMIT=true."""
+    """GitHub Actions entrypoint. Order: decisions -> fill -> notify -> submit -> fetch -> filter/embed ->
+    manual-apply digest -> report.
+
+    Ready ('tailored') applications are filled and their approval cards sent FIRST, inside
+    pipeline.fill_time_budget_minutes, so a slow fetch can never starve them; fetch/filter use the remaining
+    budget (newly tailored apps from this run's fetch are filled next run anyway, after the on-box agent
+    scores and tailors them). Submit only acts on Telegram/dashboard-approved applications and only when
+    AUTO_SUBMIT=true."""
     run = PipelineRun(id=rt.run_id, trigger=trigger)
     session.add(run)
     session.commit()
@@ -659,20 +677,22 @@ async def run_ci(session: Session, rt: Runtime, trigger: str = "cron") -> dict[s
     try:
         stats["decisions"] = stage_decisions(session, rt)
         session.commit()
-        stats["fetch"] = await stage_fetch(session, rt)
+        # 1) ready applications first: fill (own time slice) -> approval cards -> approved submissions
+        stats["fill"] = await stage_fill(session, rt)
         session.commit()
-        stats["filter_embed"] = stage_filter_embed(session, rt)
-        session.commit()
-        if rt.time_left() > 180:
-            stats["fill"] = await stage_fill(session, rt)
-            session.commit()
         stats["notify"] = stage_notify(session, rt)
-        session.commit()
-        stats["manual_digest"] = stage_manual_digest(session, rt)
         session.commit()
         if rt.time_left() > 180:
             stats["submit"] = await stage_submit(session, rt)
             session.commit()
+        # 2) discovery with whatever budget remains
+        if rt.time_left() > FETCH_MIN_SECONDS_LEFT:
+            stats["fetch"] = await stage_fetch(session, rt)
+            session.commit()
+        stats["filter_embed"] = stage_filter_embed(session, rt)
+        session.commit()
+        stats["manual_digest"] = stage_manual_digest(session, rt)
+        session.commit()
         stats["report"] = build_report(session)
     except Exception as exc:
         session.rollback()

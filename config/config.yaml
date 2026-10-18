@@ -64,6 +64,7 @@ pipeline:
   daily_application_cap: 5
   max_fills_per_run: 3
   run_time_budget_minutes: 20    # workflow timeout is 25; leave headroom
+  fill_time_budget_minutes: 12   # fill + notify run first, inside this slice; fetch/filter get the rest
   auto_submit: false             # AUTO_SUBMIT env var overrides; default stays false
   dry_run: false
 

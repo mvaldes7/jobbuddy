@@ -214,7 +214,7 @@ pytest -q                     # local fixtures + mocked Neon/Telegram only; no n
 
 | Command | Who | What it does |
 |---|---|---|
-| `run-ci` | CI | decisions → fetch → filter/embed → fill → notify → manual-apply digest → submit (if `AUTO_SUBMIT`) → report |
+| `run-ci` | CI | decisions → fill (own time slice) → notify → submit (if `AUTO_SUBMIT`) → fetch → filter/embed → manual-apply digest → report |
 | `fetch`, `filter`, `fill [--app ID] [--headed]` | CI / local | individual CI stages |
 | `agent-pull --kind score\|tailor\|questions --limit N` | agent | JSON work items + instructions + profile + schema |
 | `agent-push-scores FILE` | agent | scores; at or above threshold creates an application |

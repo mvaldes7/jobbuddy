@@ -59,6 +59,9 @@ class PipelineConfig(BaseModel):
     daily_application_cap: int = 5
     max_fills_per_run: int = 3
     run_time_budget_minutes: int = 20
+    # run-ci fills (and notifies) ready applications BEFORE fetching, within this slice of the run budget,
+    # so a slow fetch can never starve fills; fetch/filter then use whatever budget remains.
+    fill_time_budget_minutes: int = 12
     auto_submit: bool = False
     dry_run: bool = False
 
