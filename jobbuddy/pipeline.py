@@ -13,6 +13,7 @@ applications:  scored (waits for agent tailoring) -> tailored -> [needs_answers 
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import tempfile
 import time
@@ -316,23 +317,41 @@ async def stage_fill(session: Session, rt: Runtime, app_ids: list[int] | None = 
                 stats["skipped_time"] = stats.get("skipped_time", 0) + 1
                 break
             job = app.job
-            adapter = detect_adapter(job.apply_url or "", app.ats)
+            apply_url = job.apply_url
+            adapter = detect_adapter(apply_url or "", app.ats)
             ctx = _build_fill_context(session, rt, app, adapter)
+            # Never sit "idle in transaction" while the browser works: Neon kills such connections after
+            # 5 minutes, which crashed the whole run (and skipped notify) on 2026-10-18.
+            session.commit()
+            per_app = max(30.0, min(float(pc.fill_timeout_seconds), fill_time_left() - 30))
             page = await context.new_page()
             try:
-                await page.goto(job.apply_url, wait_until="domcontentloaded",
+                await page.goto(apply_url, wait_until="domcontentloaded",
                                 timeout=rt.cfg.engine.navigation_timeout_ms)
-                result = await FormFiller(ctx).run(page)
+                result = await asyncio.wait_for(FormFiller(ctx).run(page), timeout=per_app)
             except Exception as exc:
-                log.warning("fill crashed for app %s: %s", app.id, type(exc).__name__)
-                app.error = f"fill: {type(exc).__name__}"
-                repo.transition(session, app, AppStatus.FAILED, note="fill crashed")
+                timed_out = isinstance(exc, (asyncio.TimeoutError, TimeoutError))
+                log.warning("fill %s for app %s: %s", "timed out" if timed_out else "crashed", app.id,
+                            type(exc).__name__)
+                session.rollback()
+                app.error = f"fill timed out after {int(per_app)}s" if timed_out else f"fill: {type(exc).__name__}"
+                repo.transition(session, app, AppStatus.FAILED,
+                                note="fill timed out" if timed_out else "fill crashed")
+                session.commit()
                 stats["failed"] += 1
-                await page.close()
                 continue
-            await page.close()
-            _persist_fill(session, rt, app, result, stats)
-            session.commit()
+            finally:
+                try:
+                    await page.close()
+                except Exception:
+                    pass
+            try:
+                _persist_fill(session, rt, app, result, stats)
+                session.commit()
+            except Exception as exc:  # one app's DB hiccup must not abort the remaining fills or notify
+                log.warning("could not save fill for app %s: %s", app.id, type(exc).__name__)
+                session.rollback()
+                stats["failed"] += 1
 
     if page_factory is not None:
         await process(page_factory)
@@ -662,7 +681,7 @@ def build_report(session: Session) -> dict[str, Any]:
 
 # =============================== run-ci ===============================
 async def run_ci(session: Session, rt: Runtime, trigger: str = "cron") -> dict[str, Any]:
-    """GitHub Actions entrypoint. Order: decisions -> fill -> notify -> submit -> fetch -> filter/embed ->
+    """GitHub Actions entrypoint. Order: decisions -> notify -> fill -> notify -> submit -> fetch -> filter/embed ->
     manual-apply digest -> report.
 
     Ready ('tailored') applications are filled and their approval cards sent FIRST, inside
@@ -677,7 +696,10 @@ async def run_ci(session: Session, rt: Runtime, trigger: str = "cron") -> dict[s
     try:
         stats["decisions"] = stage_decisions(session, rt)
         session.commit()
-        # 1) ready applications first: fill (own time slice) -> approval cards -> approved submissions
+        # 1) ready applications first: cards still owed from an earlier run -> fill (own time slice) ->
+        #    approval cards -> approved submissions
+        stats["notify_pending"] = stage_notify(session, rt)
+        session.commit()
         stats["fill"] = await stage_fill(session, rt)
         session.commit()
         stats["notify"] = stage_notify(session, rt)

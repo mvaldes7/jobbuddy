@@ -62,6 +62,7 @@ class PipelineConfig(BaseModel):
     # run-ci fills (and notifies) ready applications BEFORE fetching, within this slice of the run budget,
     # so a slow fetch can never starve fills; fetch/filter then use whatever budget remains.
     fill_time_budget_minutes: int = 12
+    fill_timeout_seconds: int = 240     # per application; stays under Neon's 5-minute idle-in-transaction limit
     auto_submit: bool = False
     dry_run: bool = False
 

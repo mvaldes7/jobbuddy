@@ -174,3 +174,13 @@ async def test_greenhouse_react_select_comboboxes(browser_context, profile, app_
     assert low["question_3"]["value"] is None and low["question_3"]["suggestions"] == ["Yes", "No"]
     mapped = {m.field_id: m.value for m in res.steps[0].mappings}
     assert mapped["country"] == "United States +1" and mapped["question_2"] == "Yes"
+
+
+async def test_hidden_embedded_form_is_opened_directly(browser_context, profile, app_config, tmp_path):
+    page = await browser_context.new_page()
+    await page.goto(fixture_url("greenhouse_hidden_embed.html"))
+    res = await FormFiller(make_ctx(profile, app_config, tmp_path, "greenhouse")).run(page)
+    assert res.status == "awaiting_approval"
+    assert page.url.endswith("greenhouse_embed.html")
+    assert await page.evaluate("window.__submitted") is False
+    assert await page.input_value("#first_name") == "Alex"

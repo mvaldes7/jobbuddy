@@ -218,6 +218,33 @@ class FormFiller:
         await h.pause(0.4)
         return None
 
+    @staticmethod
+    async def _hidden_form_frame(page: Any, snap: Any) -> str | None:
+        """URL of a child frame that holds a form but is collapsed/hidden on the host page, else None.
+        A frame inside a display:none iframe has no layout, so the inspector sees no visible fields there;
+        count its form controls directly instead."""
+        with_fields = {f.frame_index for f in snap.fields if f.frame_index > 0 and f.type != "file"}
+        for idx, fr in enumerate(page.frames):
+            if idx == 0 or fr.parent_frame is None:
+                continue
+            url = getattr(fr, "url", "") or ""
+            if not url.startswith(("http://", "https://", "file://")):  # skip about:blank / srcdoc frames
+                continue
+            try:
+                el = await fr.frame_element()
+                box = await el.bounding_box()
+                hidden = not await el.is_visible() or not box or box["height"] < 40 or box["width"] < 40
+                if not hidden:
+                    continue
+                if idx in with_fields:
+                    return url
+                n = await fr.evaluate("() => document.querySelectorAll('input:not([type=hidden]), select, textarea').length")
+                if n >= 3:
+                    return url
+            except Exception:
+                continue
+        return None
+
     def _file_for(self, m: FieldMapping) -> Path | None:
         if m.file_kind == "resume":
             return self.ctx.resume_path
@@ -229,6 +256,7 @@ class FormFiller:
         cfg = self.ctx.engine_cfg
         result = FillResult(status="awaiting_approval")
         prev_signature: tuple[str, ...] | None = None
+        opened_embed = False
         for step in range(cfg.max_steps):
             await self._settle(page)
             blockers = await detect_blockers(page)
@@ -241,6 +269,15 @@ class FormFiller:
                 return result
 
             snap = await inspect_page(page, self.adapter.submit_automation_ids, self.adapter.next_automation_ids)
+            if not opened_embed:
+                embed_url = await self._hidden_form_frame(page, snap)
+                if embed_url:
+                    # e.g. a careers page that embeds the Greenhouse form in a collapsed iframe: every action
+                    # would time out, so open the embedded form directly (same form, same employer).
+                    opened_embed = True
+                    log.info("form iframe is hidden on the host page; opening it directly")
+                    await page.goto(embed_url, wait_until="domcontentloaded")
+                    continue
             signature = tuple(sorted(f.field_id for f in snap.fields)) + (snap.url,)
             if prev_signature is not None and signature == prev_signature and snap.error_texts:
                 result.status = "paused"
