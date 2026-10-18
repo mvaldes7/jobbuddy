@@ -184,3 +184,84 @@ async def test_hidden_embedded_form_is_opened_directly(browser_context, profile,
     assert page.url.endswith("greenhouse_embed.html")
     assert await page.evaluate("window.__submitted") is False
     assert await page.input_value("#first_name") == "Alex"
+
+
+async def test_ashby_yes_no_buttons_and_required_safety_net(browser_context, profile, app_config, tmp_path):
+    """Radio-like button pairs are filled by clicking; required fields left empty are never passed silently."""
+    page = await browser_context.new_page()
+    await page.goto(fixture_url("ashby_yesno.html"))
+    snap = await inspect_page(page)
+    by = {f.field_id: f for f in snap.fields}
+    auth = by["91d1-auth"]
+    assert auth.type == "radio" and auth.tag == "button" and auth.required
+    assert auth.label.startswith("Are you legally authorized to work in the United States")
+    assert [o.label for o in auth.options] == ["Yes", "No"]
+    assert not by["77-relocate"].required
+    assert all(b.text not in ("Yes", "No") for b in snap.buttons)  # options are not navigation buttons
+    assert snap.unhandled_required == ["Rank these priorities"]
+
+    overrides = {"91d1-auth": "Yes", "_systemfield_name": "Alex Example"}
+    res = await FormFiller(make_ctx(profile, app_config, tmp_path, "ashby", overrides=overrides)).run(page)
+    assert res.status == "awaiting_approval"
+    assert await page.evaluate("window.__submitted") is not True
+    assert await page.get_attribute('[data-option="yes"]', "aria-pressed") == "true"
+    assert await page.is_checked('input[name="91d1-auth"]')
+    # the unrecognised required question is surfaced first on the card and blocks submit
+    assert res.required_empty == ["Rank these priorities"]
+    assert res.low_confidence[0]["source"] == "verify" and res.low_confidence[0]["label"] == "Rank these priorities"
+    assert all(i["field_id"] != "91d1-auth" for i in res.low_confidence)
+
+
+async def test_required_field_left_empty_is_flagged(browser_context, profile, app_config, tmp_path):
+    page = await browser_context.new_page()
+    await page.goto(fixture_url("ashby_yesno.html"))
+    await page.evaluate("document.getElementById('mystery-entry').remove()")
+    # no answer for the required yes/no question: it must be reported, not silently passed
+    res = await FormFiller(make_ctx(profile, app_config, tmp_path, "ashby",
+                                    overrides={"_systemfield_name": "Alex Example", "91d1-auth": ""})).run(page)
+    assert res.status == "awaiting_approval"
+    assert any(i["field_id"] == "91d1-auth" and i["value"] is None and i["required"] for i in res.low_confidence)
+    assert "Are you legally authorized" in " ".join(res.required_empty)
+    from jobbuddy.notifiers.base import format_low_confidence
+    assert "REQUIRED field(s) still EMPTY" in format_low_confidence(res.low_confidence)
+
+
+@pytest.mark.parametrize("mode,status,likely,needle", [
+    ("ok", "submitted", True, None),
+    ("captcha", "paused", False, "NOT submitted"),
+    ("silent", "failed", False, "likely NOT submitted"),
+])
+async def test_submit_outcome_is_classified(browser_context, profile, app_config, tmp_path, mode, status, likely, needle):
+    page = await browser_context.new_page()
+
+    async def fake_backend(route):
+        body = '{"code": "captcha-failed", "security_code_recipient": "m***@example.com"}' if mode == "captcha" else '{}'
+        await route.fulfill(status=200, content_type="application/json", body=body,
+                            headers={"Access-Control-Allow-Origin": "*"})
+
+    await page.route("**/apply/submit", fake_backend)
+    await page.goto(fixture_url("submit_outcomes.html") + f"?mode={mode}")
+    cfg = app_config.engine.model_copy(update={"submit_outcome_timeout_seconds": 4})
+    ctx = make_ctx(profile, app_config, tmp_path, "generic", overrides={"first_name": "Alex"})
+    ctx.engine_cfg = cfg
+    token = ApprovalToken(application_id=1, approved_via="dashboard", _issued_by_submitter=True)
+    res = await FormFiller(ctx).run(page, approval=token)
+    assert res.status == status, res.error
+    assert res.likely_submitted is likely
+    if needle:
+        assert needle in res.error
+    if mode == "captcha":
+        assert res.submit_evidence.get("post_status") == 200
+
+
+def test_submit_failure_message_is_explicit():
+    from types import SimpleNamespace
+
+    from jobbuddy.pipeline import submit_failure_message
+
+    app = SimpleNamespace(id=4, error=None, job=SimpleNamespace(title="Staff PM", company_name="PathAI",
+                                                               url="https://example.com/job/1", apply_url=None))
+    no = submit_failure_message(app, SimpleNamespace(likely_submitted=False, error="NOT submitted: x"))
+    assert "NOT submitted" in no and "https://example.com/job/1" in no and "Apply manually" in no
+    maybe = submit_failure_message(app, SimpleNamespace(likely_submitted=None, error="unclear"))
+    assert "UNCLEAR" in maybe and "check your email" in maybe

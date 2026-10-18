@@ -43,7 +43,7 @@ def normalize_label(label: str) -> str:
 # (label regex, profile key | special token)
 LABEL_RULES: list[tuple[str, str]] = [
     # Checked first: these labels often mention other keywords ("...LinkedIn, website, referral?")
-    (r"how did you (hear|find|learn)|where did you (hear|find|see)|^source$|referral source|referred by", "application_answers.how_did_you_hear"),
+    (r"how did you (hear|find|learn)|where did you (hear|find|see)|^source$|referral source|referred by(?!.*\b(employee|their name|name of|who referred))", "application_answers.how_did_you_hear"),
     (r"phone (device )?type|type of phone", "__unmapped__"),
     (r"^(legal )?first name|^given name|^first$", "personal.first_name"),
     (r"^(legal )?last name|^surname|^family name|^last$", "personal.last_name"),
@@ -223,6 +223,16 @@ class FieldMapper:
             val = p.get(key) or self.ctx.how_did_you_hear_default
             return self._finish(f, val, base_conf, source, key)
         val = p.get(key)
+        if key == "application_answers.eeo.race_ethnicity" and f.options and \
+                yes_no(p.get("application_answers.eeo.hispanic_latino") or "") == "yes":
+            # Combined race/ethnicity lists (Ashby, Lever) offer "Hispanic or Latino" next to "White (Not Hispanic
+            # or Latino)": never pick a "Not Hispanic" option for someone whose profile says Hispanic/Latino = Yes.
+            hisp = next((o for o in f.options if re.search(r"hispanic|latin", o.label, re.I)
+                         and not re.search(r"\bnot\b", o.label, re.I)), None)
+            if hisp is not None:
+                return FieldMapping(field_id=f.field_id, value=[hisp.label] if f.type == "checkbox_group" else hisp.label,
+                                    confidence=min(base_conf, 0.7), source=source, profile_key=key,
+                                    reason="combined race/ethnicity list: chose Hispanic/Latino per profile; confirm")
         if key == "years_experience" and val is not None:
             val = str(val)
         if is_todo(val):

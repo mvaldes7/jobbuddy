@@ -1,0 +1,25 @@
+<!doctype html>
+<html><head><title>Apply</title></head>
+<body>
+<form id="f" onsubmit="event.preventDefault(); go();">
+  <div class="field"><label for="first_name">First Name *</label>
+    <input type="text" id="first_name" name="first_name" required></div>
+  <button type="submit">Submit application</button>
+</form>
+<div id="out"></div>
+<script>
+  // mode from ?mode=captcha | silent | ok ; the POST goes to /apply/submit (intercepted by the test)
+  const mode = new URLSearchParams(location.search).get('mode');
+  async function go() {
+    window.__clicked = true;
+    if (mode === 'silent') return;  // e.g. reCAPTCHA execute never resolves: no request is sent
+    const r = await fetch('https://jobs.example.test/apply/submit', { method: 'POST', body: JSON.stringify({ a: 1 }) });
+    const j = await r.json();
+    if (j.code === 'captcha-failed') {
+      document.getElementById('out').innerHTML = '<p>Enter the 8-character security code sent to your email</p>';
+    } else if (r.ok) {
+      document.body.innerHTML = '<h1>Thank you for applying.</h1>';
+    }
+  }
+</script>
+</body></html>

@@ -120,3 +120,20 @@ jobbuddy never creates accounts or logs in.
 `engine/human.py` adds random per-keystroke delays (45-140 ms) and action pauses (350-1200 ms). These keep
 load on employer sites polite. They are **not** an anti-bot evasion technique: jobbuddy has no stealth
 plugins and does no fingerprint spoofing.
+
+## Radio-like button pairs, the required-field safety net, and submit outcomes
+
+* **Yes/No button pairs** (Ashby `ashby-application-form-input-yesno`: `<button aria-pressed data-option>` siblings
+  plus a visually hidden checkbox) are reported as `type: radio`, `tag: button`; the filler clicks the matching
+  option unless it is already `aria-pressed="true"`. The hidden checkbox is not reported separately.
+* **Safety net:** right before stopping at Submit the filler re-inspects the page. Every required field whose
+  value is still empty, and every required question label with no control we recognise
+  (`PageSnapshot.unhandled_required`), goes to the top of `low_confidence` (`source: "verify"`) and into
+  `FillResult.required_empty`. The approval card opens with a "REQUIRED field(s) still EMPTY" warning, and
+  `_submit` refuses (paused) while any remain.
+* **Submit outcome:** after clicking Submit the filler waits up to `engine.submit_outcome_timeout_seconds` (45 s)
+  for a confirmation, a challenge, a security-code prompt (Greenhouse answers `captcha-failed` and emails an
+  8-character code when its invisible reCAPTCHA Enterprise score is too low), field errors, or the application
+  POST response (status + JSON `code` only). `likely_submitted` is True / False / None and the Telegram message
+  says plainly "NOT submitted" (with the job link to apply manually) or "outcome UNCLEAR, check your email".
+  jobbuddy never retries a submit.

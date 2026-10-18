@@ -62,6 +62,7 @@ class PageSnapshot(BaseModel):
     fields: list[FormField] = Field(default_factory=list)
     buttons: list[Button] = Field(default_factory=list)
     error_texts: list[str] = Field(default_factory=list)
+    unhandled_required: list[str] = Field(default_factory=list)  # required labels with no recognised control
 
 
 class FieldMapping(BaseModel):
@@ -99,6 +100,10 @@ class FillResult(BaseModel):
     error: str | None = None
     submit_button: Button | None = None
     confirmation_text: str | None = None
+    required_empty: list[str] = Field(default_factory=list)  # required fields still empty after filling
+    # After a Submit click: True = confirmed, False = evidence it did NOT go through, None = unknown.
+    likely_submitted: bool | None = None
+    submit_evidence: dict[str, Any] = Field(default_factory=dict)  # POST status/code, errors (no PII)
 
     def filled_state(self) -> dict[str, Any]:
         """Serializable state persisted on the application (no file contents, no screenshots)."""

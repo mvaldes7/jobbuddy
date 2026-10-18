@@ -141,6 +141,9 @@ EXTRACT_JS = r"""
       if (tag === 'input' && type !== 'file' && el.getAttribute('aria-hidden') === 'true' && el.getAttribute('tabindex') === '-1') continue;
       if (tag === 'button' || (el.getAttribute('role') === 'combobox' && tag !== 'select' &&
           (tag !== 'input' || ['text', 'search', ''].includes(type)))) type = 'custom_select';
+      // The hidden input behind a radio-like button pair (Ashby yes/no) is handled with its buttons below.
+      if (tag === 'input' && ['checkbox', 'radio', 'hidden'].includes(type) && el.parentElement &&
+          el.parentElement.querySelectorAll(':scope > button[aria-pressed]').length >= 2) continue;
       const visible = isVisible(el);
       if (!visible && type !== 'file') continue;  // file inputs are often visually hidden behind a styled button
       if (el.disabled) continue;
@@ -179,10 +182,57 @@ EXTRACT_JS = r"""
         in_shadow: inShadow });
     }
   }
+  // Button pairs that behave like radios (e.g. Ashby's yes/no: <button aria-pressed data-option="yes">Yes</button>
+  // <button aria-pressed>No</button> plus a visually hidden checkbox). Reported as a radio with tag 'button'.
+  const pressedGroups = new Set();
+  for (const [root, inShadow] of roots) {
+    for (const b of root.querySelectorAll('button[aria-pressed]')) {
+      const grp = b.parentElement;
+      if (!grp || pressedGroups.has(grp)) continue;
+      const opts = Array.from(grp.querySelectorAll(':scope > button[aria-pressed]')).filter(isVisible);
+      if (opts.length < 2 || opts.length > 8) continue;
+      pressedGroups.add(grp);
+      const hidden = grp.querySelector('input[type="checkbox"], input[type="radio"], input[type="hidden"]');
+      const name = (hidden && hidden.name) || null;
+      const entry = grp.closest('[data-field-path], .ashby-application-form-field-entry, fieldset, [role="group"]') || grp.parentElement;
+      let lab = null;
+      if (name) { try { lab = root.querySelector('label[for="' + CSS.escape(name) + '"]'); } catch (e) { lab = null; } }
+      if (!lab && entry) lab = entry.querySelector('label, legend');
+      const gl = lab ? textOf(lab) : ((nearestText(grp) || [''])[0] || '');
+      const required = !!((hidden && hidden.required) || (lab && /required/i.test(String(lab.className || ''))) || /\*\s*$/.test(gl));
+      const pressed = opts.find(o => o.getAttribute('aria-pressed') === 'true');
+      fields.push({ jb_id: stamp(grp), selector: sel(grp), tag: 'button', type: 'radio', label: gl,
+        label_source: lab ? 'label' : 'nearest', name: name || (entry && entry.getAttribute('data-field-path')) || null,
+        html_id: null, automation_id: null, container_automation_id: null, placeholder: null, required,
+        options: opts.map(o => ({ value: o.getAttribute('data-option') || textOf(o), label: textOf(o), selector: sel(o) })),
+        accept: null, multiple: false, max_length: null, current_value: pressed ? textOf(pressed) : null, in_shadow: inShadow });
+    }
+  }
+  // Required question labels with no control we recognise: reported so the filler never passes them silently.
+  const unhandled = [];
+  const stripStar = t => t.replace(/\s*\*+\s*$/, '');
+  const emitted = new Set(fields.map(f => stripStar(clean(f.label || '')).toLowerCase()).filter(Boolean));
+  for (const [root] of roots) {
+    for (const lab of root.querySelectorAll('label, legend')) {
+      if (!isVisible(lab)) continue;
+      const t = textOf(lab);
+      if (!t || t.length > 400) continue;
+      if (!(/\*\s*$/.test(t) || /(^|[\s_-])_?required/i.test(String(lab.className || '')))) continue;
+      const key = stripStar(t).toLowerCase();
+      if (!key || emitted.has(key)) continue;
+      const tgt = lab.htmlFor ? findById(root, lab.htmlFor) : null;
+      if (tgt && tgt.getAttribute('data-jb-id')) continue;
+      const box = lab.closest('[data-field-path], .ashby-application-form-field-entry, .field, .form-group, fieldset, li') || lab.parentElement;
+      if (box && box.querySelector('input[data-jb-id], select[data-jb-id], textarea[data-jb-id], [role="combobox"][data-jb-id], [data-jb-id] > button[aria-pressed]')) continue;
+      unhandled.push(stripStar(t));
+      emitted.add(key);
+    }
+  }
   const buttons = [];
   for (const [root] of roots) {
     for (const b of root.querySelectorAll('button, input[type="submit"], input[type="button"], a[role="button"], [role="button"]')) {
       if (b.getAttribute('aria-haspopup') === 'listbox' || !isVisible(b)) continue;
+      if (b.hasAttribute('aria-pressed') && pressedGroups.has(b.parentElement)) continue;  // a radio-like option
       const text = clean(b.tagName === 'INPUT' ? b.value : (b.innerText || b.textContent || b.getAttribute('aria-label') || ''));
       buttons.push({ text, jb_id: stamp(b), selector: sel(b), automation_id: autoId(b), type: b.getAttribute('type'), disabled: !!b.disabled || b.getAttribute('aria-disabled') === 'true' });
     }
@@ -193,7 +243,7 @@ EXTRACT_JS = r"""
       if (isVisible(e) && textOf(e)) errors.push(textOf(e));
     }
   }
-  return { url: location.href, title: document.title, fields, buttons, errors };
+  return { url: location.href, title: document.title, fields, buttons, errors, unhandled };
 }
 """
 
@@ -264,6 +314,7 @@ async def inspect_page(page: Any, submit_ids: set[str] | None = None, next_ids: 
             btn.kind = classify_button(btn, submit_ids, next_ids)  # type: ignore[assignment]
             snap.buttons.append(btn)
         snap.error_texts.extend(raw.get("errors") or [])
+        snap.unhandled_required.extend(raw.get("unhandled") or [])
     # De-duplicate field ids (e.g. two inputs sharing a name across frames)
     seen: dict[str, int] = {}
     for f in snap.fields:

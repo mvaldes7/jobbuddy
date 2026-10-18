@@ -56,7 +56,12 @@ class NullNotifier:
 def format_low_confidence(items: list[dict[str, Any]], limit: int = 12) -> str:
     if not items:
         return "All fields mapped with high confidence."
-    lines = ["Fields needing review:"]
+    lines = []
+    blank = [it for it in items if it.get("source") == "verify"]
+    if blank:
+        lines.append(f"\u26a0\ufe0f {len(blank)} REQUIRED field(s) still EMPTY on the form - submit is blocked until "
+                     "they are filled: " + "; ".join(str(it.get("label") or it["field_id"])[:80] for it in blank[:6]))
+    lines.append("Fields needing review:")
     for it in items[:limit]:
         val = it.get("value")
         val_s = "(empty)" if val in (None, "", []) else str(val)[:60]

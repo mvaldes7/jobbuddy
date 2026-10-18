@@ -1,0 +1,37 @@
+<!doctype html>
+<html><head><title>Ashby-style application</title>
+<style>
+  ._input_1svni_78 { position:absolute; width:1px; height:1px; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); }
+  .ashby-application-form-input-yesno-option[aria-pressed="true"] { background:#335; color:#fff; }
+</style>
+<script>
+  function pick(btn) {
+    const grp = btn.parentElement;
+    grp.querySelectorAll('button[aria-pressed]').forEach(b => b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'));
+    grp.querySelector('input[type=checkbox]').checked = btn.dataset.option === 'yes';
+  }
+</script>
+</head>
+<body>
+<form id="form" onsubmit="event.preventDefault(); window.__submitted = true;">
+  <div class="ashby-application-form-field-entry" data-field-path="_systemfield_name">
+    <label class="_heading_f7cvd_52 _required_f7cvd_91 ashby-application-form-question-title" for="_systemfield_name">Name</label>
+    <input id="_systemfield_name" name="_systemfield_name" type="text" required></div>
+  <div class="ashby-application-form-field-entry" data-field-path="91d1-auth">
+    <label class="_heading_f7cvd_52 _required_f7cvd_91 ashby-application-form-question-title" for="91d1-auth">Are you legally authorized to work in the United States for any employer without requiring sponsorship now or in the future?</label>
+    <div class="_yesno_1e3gg_148 ashby-application-form-input-yesno">
+      <button type="button" class="ashby-application-form-input-yesno-option" aria-pressed="false" data-option="yes" onclick="pick(this)">Yes</button>
+      <button type="button" class="ashby-application-form-input-yesno-option" aria-pressed="false" data-option="no" onclick="pick(this)">No</button>
+      <input type="checkbox" class="_input_1svni_78" tabindex="-1" name="91d1-auth"></div></div>
+  <div class="ashby-application-form-field-entry" data-field-path="77-relocate">
+    <label class="_heading_f7cvd_52 ashby-application-form-question-title" for="77-relocate">Are you open to relocation?</label>
+    <div class="ashby-application-form-input-yesno">
+      <button type="button" class="ashby-application-form-input-yesno-option" aria-pressed="false" data-option="yes" onclick="pick(this)">Yes</button>
+      <button type="button" class="ashby-application-form-input-yesno-option" aria-pressed="false" data-option="no" onclick="pick(this)">No</button>
+      <input type="checkbox" class="_input_1svni_78" tabindex="-1" name="77-relocate"></div></div>
+  <div class="ashby-application-form-field-entry" id="mystery-entry">
+    <label class="_heading_f7cvd_52 _required_f7cvd_91 ashby-application-form-question-title">Rank these priorities</label>
+    <div class="custom-ranker" tabindex="0">drag items here</div></div>
+  <button type="submit" class="ashby-application-form-submit-button">Submit Application</button>
+</form>
+</body></html>

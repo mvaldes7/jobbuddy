@@ -107,3 +107,30 @@ def test_detect_adapter():
     assert detect_adapter("https://acme.wd5.myworkdayjobs.com/External/job/x").name == "workday"
     assert detect_adapter("https://jobs.lever.co/acme/1/apply").name == "lever"
     assert detect_adapter("https://example.com/careers/apply").name == "generic"
+
+
+def test_employee_referral_name_is_not_how_did_you_hear():
+    import re
+
+    from jobbuddy.engine.field_mapper import LABEL_RULES, normalize_label
+
+    lab = normalize_label("Were you referred by a current PathAI employee? If so, please enter their name here:")
+    hits = [k for pat, k in LABEL_RULES if re.search(pat, lab)]
+    assert "application_answers.how_did_you_hear" not in hits
+    assert any(k == "application_answers.how_did_you_hear" for pat, k in LABEL_RULES
+               if re.search(pat, normalize_label("How did you hear about this job?")))
+
+
+def test_combined_race_list_respects_hispanic_yes(profile):
+    from jobbuddy.engine.adapters.base import get_adapter
+    from jobbuddy.engine.field_mapper import FieldMapper, MapperContext
+    from jobbuddy.engine.models import FormField, Option
+
+    prof = profile.model_copy(deep=True)
+    prof.application_answers.eeo.race_ethnicity = "White"
+    prof.application_answers.eeo.hispanic_latino = "Yes"
+    opts = ["Hispanic or Latino", "White (Not Hispanic or Latino)", "Asian (Not Hispanic or Latino)", "Decline to self-identify"]
+    f = FormField(field_id="race", jb_id="1", selector="#r", tag="input", type="radio", label="Race",
+                  options=[Option(value=o, label=o) for o in opts])
+    m = FieldMapper(MapperContext(profile=prof, adapter=get_adapter("ashby"))).map_fields([f])[0]
+    assert m.value == "Hispanic or Latino"

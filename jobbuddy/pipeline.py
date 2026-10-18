@@ -422,7 +422,11 @@ def _persist_fill(session: Session, rt: Runtime, app: Application, result: Any, 
                       else result.status)
     if result.status == "awaiting_approval":
         repo.transition(session, app, AppStatus.FILLED, note=f"{len(result.steps)} step(s) filled")
-        repo.transition(session, app, AppStatus.AWAITING_APPROVAL, note="stopped before final submit")
+        repo.transition(session, app, AppStatus.AWAITING_APPROVAL,
+                        note=("stopped before final submit" if not result.required_empty else
+                              f"stopped before final submit; {len(result.required_empty)} required field(s) "
+                              "still empty (listed on the card, submit blocked)"),
+                        payload={"required_empty": result.required_empty[:20]} if result.required_empty else None)
         app.notified_at = None
         stats["filled"] += 1
     elif result.status == "paused":
@@ -580,6 +584,21 @@ def stage_decisions(session: Session, rt: Runtime) -> dict[str, int]:
 
 
 # =============================== submit ===============================
+def submit_failure_message(app: Application, result: Any) -> str:
+    """Telegram text after a submit attempt that did not confirm: says plainly whether it went through."""
+    job = app.job
+    link = (job.url or job.apply_url or "") if job is not None else ""
+    head = f"#{app.id} {job.title} @ {job.company_name}" if job is not None else f"#{app.id}"
+    likely = getattr(result, "likely_submitted", None) if result is not None else None
+    reason = (getattr(result, "error", None) if result is not None else None) or app.error or "submit failed"
+    if likely is False:
+        verdict = "❌ NOT submitted (it most likely did not go through). Apply manually here:"
+    else:
+        verdict = ("⚠️ Submit outcome UNCLEAR. It may or may not have gone through: check your email for a "
+                   "confirmation before re-applying. Job link:")
+    return f"{head}\n{verdict}\n{link}\nWhy: {reason[:300]}\njobbuddy will not retry this automatically."
+
+
 async def stage_submit(session: Session, rt: Runtime, *, confirm: bool = False, app_ids: list[int] | None = None,
                        page_factory: Any = None) -> dict[str, int]:
     """Submits APPROVED applications. Requires AUTO_SUBMIT=true (cron) or an explicit --confirm (CLI)."""
@@ -636,14 +655,17 @@ async def stage_submit(session: Session, rt: Runtime, *, confirm: bool = False, 
                 stats["submitted"] += 1
             elif result is not None and result.status == "paused":
                 app.pause_reason = (result.error or "human needed")[:255]
-                repo.transition(session, app, AppStatus.PAUSED, note=app.pause_reason)
-                _alert(rt, f"#{app.id} paused during submit: {app.pause_reason}", png)
+                repo.transition(session, app, AppStatus.PAUSED, note=app.pause_reason,
+                                payload={"submit_evidence": result.submit_evidence} if result.submit_evidence else None)
+                _alert(rt, submit_failure_message(app, result), png)
                 stats["paused"] += 1
             else:
                 # Never auto-retry: the click may have gone through. Mike verifies manually.
                 app.error = (result.error if result else app.error) or "submit failed"
-                repo.transition(session, app, AppStatus.FAILED, note=app.error[:255])
-                _alert(rt, f"#{app.id} submit outcome unclear - please verify manually: {app.error}", png)
+                repo.transition(session, app, AppStatus.FAILED, note=app.error[:255],
+                                payload={"submit_evidence": result.submit_evidence}
+                                if result is not None and result.submit_evidence else None)
+                _alert(rt, submit_failure_message(app, result), png)
                 stats["failed"] += 1
             session.commit()
 

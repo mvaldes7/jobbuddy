@@ -16,12 +16,17 @@ from typing import Any, Callable
 from jobbuddy.config import EngineConfig
 from jobbuddy.engine.detectors import detect_blockers
 from jobbuddy.engine.field_mapper import (FieldMapper, MapperContext, _norm, low_confidence_items, match_option,
-                                         needs_cover_letter)
+                                         needs_cover_letter, normalize_label)
 from jobbuddy.engine.form_inspector import frame_for, inspect_page
 from jobbuddy.engine.human import Human
 from jobbuddy.engine.models import Button, FieldMapping, FillResult, FormField, Option, StepRecord
 
 log = logging.getLogger(__name__)
+
+# POSTs after Submit that are not the application itself (captcha, analytics, telemetry).
+NOISE_POST = re.compile(r"recaptcha|google|gstatic|analytics|snowplow|sentry|datadog|segment|hotjar|doubleclick|"
+                        r"facebook|linkedin\.com/(li|px)|/collect\b|/track|/events?\b|/log\b", re.I)
+SECURITY_CODE = re.compile(r"security code|verification code|enter the \d+[- ]character code|code (was|has been) sent", re.I)
 
 COMBO_WAIT_S = 5.0        # async autocompletes (e.g. Greenhouse location) can take a few seconds
 COMBO_MAX_OPTIONS = 200
@@ -96,8 +101,16 @@ class FormFiller:
                 await opt.first.click()
             elif f.type == "radio":
                 target = next((o for o in f.options if o.label == m.value or o.value == m.value), None)
-                if target and target.selector:
-                    await frame.locator(target.selector).first.check()
+                if target is None:
+                    target, _score = match_option(m.value, f.options)
+                if target is None or not target.selector:
+                    return f"{f.field_id}: no option matches {str(m.value)[:40]!r}"
+                opt = frame.locator(target.selector).first
+                if f.tag == "button":  # radio-like button pair (Ashby yes/no): click unless already pressed
+                    if (await opt.get_attribute("aria-pressed")) != "true":
+                        await opt.click()
+                else:
+                    await opt.check()
             elif f.type == "checkbox_group":
                 vals = m.value if isinstance(m.value, list) else [m.value]
                 for o in f.options:
@@ -301,6 +314,7 @@ class FormFiller:
             if submit is not None and nxt is None:
                 rec.action = "stopped_before_submit"
                 result.submit_button = submit
+                await self._verify_required(page, result)
                 result.final_url = page.url
                 result.screenshot_path = await self._screenshot(page, "filled")
                 if approval is None or not approval.valid_for(self.ctx.application_id):
@@ -322,36 +336,142 @@ class FormFiller:
         result.error = f"exceeded max_steps={cfg.max_steps}"
         return result
 
+    async def _verify_required(self, page: Any, result: FillResult) -> None:
+        """Safety net: re-read the page after filling. Any required field that is still empty (or a required
+        question with no control we recognise) goes to the top of low_confidence (so it is on the approval card
+        and blocks submit) and into result.required_empty; it never passes silently."""
+        await self.ctx.human.pause(0.3)
+        try:
+            snap = await inspect_page(page, self.adapter.submit_automation_ids, self.adapter.next_automation_ids)
+        except Exception as exc:  # pragma: no cover - inspection failure must not hide anything
+            log.warning("post-fill verification failed: %s", type(exc).__name__)
+            return
+        prior = {i.get("field_id"): i for i in result.low_confidence}
+        empty: list[dict[str, Any]] = []
+        for f in snap.fields:
+            if not f.required or f.type in ("file", "password"):
+                continue
+            v = f.current_value
+            if (f.type == "checkbox" and v is not True) or v in (None, "", [], False):
+                empty.append({"field_id": f.field_id, "label": f.label, "type": f.type, "required": True,
+                              "value": None, "confidence": 0.0, "source": "verify",
+                              "reason": "required field still empty after fill",
+                              "suggestions": (prior.get(f.field_id) or {}).get("suggestions")
+                              or [o.label for o in f.options][:8]})
+        for label in snap.unhandled_required:
+            empty.append({"field_id": f"unhandled:{normalize_label(label)[:80]}", "label": label, "type": "unknown",
+                          "required": True, "value": None, "confidence": 0.0, "source": "verify",
+                          "reason": "required question the filler could not recognise; answer it on the form",
+                          "suggestions": []})
+        if not empty:
+            return
+        ids = {e["field_id"] for e in empty}
+        result.low_confidence = empty + [i for i in result.low_confidence if i.get("field_id") not in ids]
+        result.required_empty = [e["label"] or e["field_id"] for e in empty]
+        log.warning("required fields still empty after fill: %d", len(empty))
+
     async def _submit(self, page: Any, submit: Button, result: FillResult) -> FillResult:
         """Only reachable with a valid ApprovalToken."""
         missing = [i for i in result.low_confidence if i["required"] and i["value"] in (None, "", [])]
-        if missing:
+        if missing or result.required_empty:
             result.status = "paused"
-            result.error = "required fields still empty: " + ", ".join(i["label"] for i in missing[:5])
+            result.error = "required fields still empty: " + ", ".join(
+                (result.required_empty or [i["label"] for i in missing])[:5])
             return result
+        posts: list[Any] = []
+
+        def _on_response(resp: Any) -> None:
+            try:
+                if resp.request.method == "POST" and not NOISE_POST.search(resp.url):
+                    posts.append(resp)
+            except Exception:
+                pass
+
+        page.on("response", _on_response)
+        pre_text = await self._page_text(page)
+        code_prompt_before = bool(SECURITY_CODE.search(pre_text))
         await self.ctx.human.pause()
         await frame_for(page, submit.frame_index).locator(submit.selector).first.click()
-        await self._settle(page)
-        await asyncio.sleep(2)
-        blockers = await detect_blockers(page)
-        if blockers:  # e.g. an invisible reCAPTCHA escalated to a challenge
-            result.status = "paused"
-            result.blockers = blockers
-            result.error = "challenge after submit click: human needed"
-            result.screenshot_path = await self._screenshot(page, "post_submit_blocked")
+        ev: dict[str, Any] = {}
+        result.submit_evidence = ev
+        timeout = getattr(self.ctx.engine_cfg, "submit_outcome_timeout_seconds", 45)
+        deadline = time.monotonic() + timeout
+        text = ""
+        while True:
+            await asyncio.sleep(1.0)
+            text = await self._page_text(page)
+            if any(re.search(p, text, re.I) for p in self.adapter.confirmation_patterns):
+                result.status, result.likely_submitted = "submitted", True
+                result.confirmation_text = re.sub(r"\s+", " ", text).strip()[:300]
+                result.screenshot_path = await self._screenshot(page, "submitted")
+                result.final_url = page.url
+                ev.update(await self._post_evidence(posts))
+                return result
+            blockers = await detect_blockers(page)
+            if blockers:  # e.g. an invisible reCAPTCHA escalated to a visible challenge
+                result.status, result.likely_submitted, result.blockers = "paused", False, blockers
+                result.error = "challenge after submit click: human needed (NOT submitted)"
+                break
+            if not code_prompt_before and SECURITY_CODE.search(text):  # Greenhouse "captcha-failed": emails an 8-character code to finish
+                result.status, result.likely_submitted = "paused", False
+                result.error = ("NOT submitted: the site's anti-bot check failed and it emailed a security code to "
+                                "finish; apply manually")
+                break
+            ev.update(await self._post_evidence(posts))
+            if ev.get("post_status") and ev["post_status"] >= 400 or ev.get("post_code"):
+                result.status, result.likely_submitted = "failed", False
+                result.error = (f"NOT submitted: application request rejected (HTTP {ev.get('post_status')}"
+                                f"{', ' + str(ev['post_code']) if ev.get('post_code') else ''})")
+                break
+            if time.monotonic() >= deadline:
+                break
+        ev.update(await self._post_evidence(posts))
+        try:
+            snap = await inspect_page(page, self.adapter.submit_automation_ids, self.adapter.next_automation_ids)
+            ev["error_texts"] = [t[:120] for t in snap.error_texts[:8]]
+            ev["submit_button_still_present"] = any(b.kind == "submit" for b in snap.buttons)
+        except Exception:
+            pass
+        result.final_url = page.url
+        ev["final_url"] = page.url[:300]
+        result.screenshot_path = await self._screenshot(page, "post_submit_blocked" if result.blockers else "after_submit")
+        if result.status in ("paused", "failed") and result.likely_submitted is False:
             return result
+        result.status = "failed"
+        if ev.get("error_texts"):
+            result.likely_submitted = False
+            result.error = "NOT submitted: the form showed errors after Submit: " + "; ".join(ev["error_texts"][:3])
+        elif not ev.get("post_status"):
+            result.likely_submitted = False
+            result.error = (f"likely NOT submitted: no application request was sent within {timeout}s of clicking "
+                            "Submit (client-side check or invisible reCAPTCHA did not complete)")
+        else:
+            result.likely_submitted = None
+            result.error = (f"submit outcome unclear: the site answered HTTP {ev['post_status']} but showed no "
+                            "confirmation; check your email before re-applying")
+        return result
+
+    async def _page_text(self, page: Any) -> str:
         text = ""
         for fr in page.frames:
             try:
-                text += " " + (await fr.evaluate("() => document.body ? document.body.innerText : ''"))[:5000]
+                text += " " + (await fr.evaluate("() => document.body ? document.body.innerText : ''"))[:8000]
             except Exception:
                 pass
-        result.screenshot_path = await self._screenshot(page, "submitted")
-        result.final_url = page.url
-        if any(re.search(p, text, re.I) for p in self.adapter.confirmation_patterns):
-            result.status = "submitted"
-            result.confirmation_text = re.sub(r"\s+", " ", text).strip()[:300]
-        else:
-            result.status = "failed"
-            result.error = "no confirmation detected after submit; verify manually"
-        return result
+        return text
+
+    @staticmethod
+    async def _post_evidence(posts: list[Any]) -> dict[str, Any]:
+        """Status and JSON 'code' of the last application POST (e.g. Greenhouse 'captcha-failed'); no bodies kept."""
+        if not posts:
+            return {}
+        r = posts[-1]
+        out: dict[str, Any] = {"post_status": r.status, "post_host": re.sub(r"^https?://([^/]+).*$", r"\1", r.url),
+                               "posts": len(posts)}
+        try:
+            body = await r.json()
+            if isinstance(body, dict) and body.get("code"):
+                out["post_code"] = str(body["code"])[:60]
+        except Exception:
+            pass
+        return out

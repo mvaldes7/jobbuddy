@@ -53,6 +53,7 @@ class EngineConfig(BaseModel):
     action_delay_ms: tuple[int, int] = (350, 1200)
     navigation_timeout_ms: int = 45000
     how_did_you_hear_default: str = "Company careers page"
+    submit_outcome_timeout_seconds: int = 45  # wait this long after Submit for confirmation / errors / the POST
 
 
 class PipelineConfig(BaseModel):
