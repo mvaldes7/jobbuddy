@@ -143,3 +143,30 @@ def test_questions_open_ended_llm(profile, fake_llm_factory):
                                         'Health.", "confidence": 0.95}'})
     a = answer_question(llm, profile, JOB, "Why do you want to work at Acme Health?", max_chars=500)
     assert a.source == "llm" and a.confidence <= 0.8 and "three months" in a.text
+
+
+def test_cover_letter_from_template_keeps_layout(tmp_path):
+    from docx import Document
+    from docx.shared import Pt, RGBColor
+
+    from jobbuddy.tailoring.render import render_cover_letter_from_template
+
+    tpl = Document()
+    tpl.add_table(rows=1, cols=2).cell(0, 0).text = "Header Name"
+    for t in ["", "Dear Old Manager,", "", "Old body one.", "", "Old body two.", "", "Sincerely,", "Old Sig"]:
+        r = tpl.add_paragraph().add_run(t)
+        r.font.size = Pt(10)
+        r.font.name = "Helvetica Neue"
+        r.font.color.rgb = RGBColor(0x11, 0x22, 0x33)
+    src = tmp_path / "tpl.docx"
+    tpl.save(src)
+    out = render_cover_letter_from_template(
+        src, "Dear Hiring Team,\n\nNew one.\n\nNew two.\n\nNew three.\n\nSincerely,\nMichael A. Valdés", tmp_path / "o.docx")
+    d = Document(out)
+    texts = [p.text for p in d.paragraphs]
+    assert texts == ["", "Dear Hiring Team,", "", "New one.", "", "New two.", "", "New three.", "",
+                     "Sincerely,", "Michael A. Valdés"]
+    assert d.tables[0].cell(0, 0).text == "Header Name"
+    body = d.paragraphs[5].runs[0]
+    assert body.font.name == "Helvetica Neue" and body.font.size == Pt(10)
+    assert body.font.color.rgb == RGBColor(0x11, 0x22, 0x33)

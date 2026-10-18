@@ -180,8 +180,10 @@ pytest -q                     # local fixtures + mocked Neon/Telegram only; no n
      `python -m playwright install --with-deps chromium`, then **`python -m jobbuddy.cli run-ci`**. It masks
      profile PII and uploads no artifacts.
 3. **On-box agent.** On Mike's machine, clone the repo and `pip install -r requirements.txt` (LibreOffice
-   or Word is needed for PDF output). Keep `profile/profile.yaml` and `profile/cover_letter_sample.txt`
-   there, then set `DATABASE_URL` (jobbuddy_app role) and `DATABASE_TRANSPORT=neon_http`. Schedule the
+   or Word is needed for PDF output). Keep `profile/profile.yaml`, `profile/cover_letter_sample.txt` and
+   `profile/cover_letter_template.docx` (Mike's own letter: the base text every letter is tailored from AND
+   the formatting template; letters are always rendered from it and uploaded as **PDF**, never .docx; CI gets
+   it from `upload-document profile/cover_letter_template.docx --kind cover_letter_sample`) there, then set `DATABASE_URL` (jobbuddy_app role) and `DATABASE_TRANSPORT=neon_http`. Schedule the
    assistant to run this loop, for example hourly:
    ```bash
    jobbuddy ingest-alert-email /path/to/alert.eml        # or --json msg.json, once per new JobAlerts message

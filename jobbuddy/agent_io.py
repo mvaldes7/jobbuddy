@@ -150,6 +150,21 @@ class AgentIO:
     def _rows(self, sql: str, params: Iterable[Any] = ()) -> list[dict[str, Any]]:
         return self.t.query(sql, list(params)).dicts()
 
+    def cover_letter_template(self) -> Any:
+        """Mike's cover-letter .docx: local profile/cover_letter_template.docx, else the latest .docx stored
+        as kind 'cover_letter_sample' in candidate_documents."""
+        from jobbuddy.tailoring.render import COVER_LETTER_TEMPLATE
+
+        if COVER_LETTER_TEMPLATE.exists():
+            return COVER_LETTER_TEMPLATE
+        rows = self._rows("SELECT content FROM candidate_documents WHERE kind = 'cover_letter_sample' "
+                          "AND lower(filename) LIKE '%.docx' ORDER BY id DESC LIMIT 1")
+        if not rows:
+            return None
+        from jobbuddy.db.neon_http import decode_bytea
+
+        return decode_bytea(rows[0]["content"])
+
     def style_sample(self) -> str:
         """Voice sample: profile inline text -> local profile file -> candidate_documents (via transport)."""
         if self._style is not None:
@@ -406,7 +421,7 @@ class AgentIO:
     def push_tailoring(self, data: Any, *, render_pdf: bool = True) -> dict[str, Any]:
         from jobbuddy.db.repository import _guess_type
         from jobbuddy.tailoring.cover_letter import template_cover_letter
-        from jobbuddy.tailoring.render import docx_to_pdf, render_cover_letter_docx, render_resume_docx
+        from jobbuddy.tailoring.render import docx_to_pdf, render_cover_letter_pdf, render_resume_docx
         from jobbuddy.tailoring.resume import _LLMTailor, apply_llm_tailoring, deterministic_tailor
 
         payload = _coerce_payload(TailoringPayload, data, "items")
@@ -437,10 +452,16 @@ class AgentIO:
             appdir.mkdir(parents=True, exist_ok=True)
             p = self.profile.personal
             resume_docx = render_resume_docx(self.profile, tailored, appdir / f"{p.first_name}_{p.last_name}_Resume.docx")
-            cl_docx = render_cover_letter_docx(self.profile, cover, appdir / f"{p.first_name}_{p.last_name}_Cover_Letter.docx")
             want_pdf = render_pdf and "pdf" in self.cfg.tailoring.output_formats
-            files = [("tailored_resume", (docx_to_pdf(resume_docx) if want_pdf else None) or resume_docx),
-                     ("cover_letter", (docx_to_pdf(cl_docx) if want_pdf else None) or cl_docx)]
+            files = [("tailored_resume", (docx_to_pdf(resume_docx) if want_pdf else None) or resume_docx)]
+            # The cover letter is always a PDF rendered from Mike's template, never the .docx. Without a
+            # PDF converter (or with --no-pdf) only the text is stored and the filler renders it at fill time.
+            if want_pdf:
+                cl_pdf = render_cover_letter_pdf(self.profile, cover,
+                                                 appdir / f"{p.first_name}_{p.last_name}_Cover_Letter.docx",
+                                                 template=self.cover_letter_template())
+                if cl_pdf is not None:
+                    files.append(("cover_letter", cl_pdf))
             aid = it.application_id
             stmts: list[tuple[str, list[Any]]] = []
             for kind, path in files:

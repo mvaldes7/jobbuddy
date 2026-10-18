@@ -201,7 +201,7 @@ def _build_fill_context(session: Session, rt: Runtime, app: Application, adapter
     from jobbuddy.engine.field_mapper import normalize_label
     from jobbuddy.tailoring.cover_letter import generate_cover_letter
     from jobbuddy.tailoring.questions import Answer, sensitive_key
-    from jobbuddy.tailoring.render import docx_to_pdf, render_cover_letter_docx
+    from jobbuddy.tailoring.render import render_cover_letter_pdf
 
     job = app.job
     appdir = rt.workdir / f"app{app.id}"
@@ -226,19 +226,21 @@ def _build_fill_context(session: Session, rt: Runtime, app: Application, adapter
         if "path" in cl_cache:
             return cl_cache["path"]
         stored = repo.latest_document(session, "cover_letter", application_id=app.id)
-        if stored is not None:  # rendered + uploaded by agent-push-tailoring
+        if stored is not None and stored.filename.lower().endswith(".pdf"):  # uploaded by agent / Mike
             cl_cache["path"] = _materialize(stored, appdir)
             return cl_cache["path"]
         text = cover_text()
         if not text:
             return None
-        docx = render_cover_letter_docx(rt.profile, text, appdir / f"{rt.profile.personal.last_name}_Cover_Letter.docx")
-        pdf = docx_to_pdf(docx)
-        final = pdf or docx
-        repo.store_document(session, kind="cover_letter", filename=final.name, content=final.read_bytes(),
-                            application_id=app.id)
-        cl_cache["path"] = final
-        return final
+        # Always a PDF rendered from Mike's cover-letter template; never upload the .docx itself.
+        p = rt.profile.personal
+        pdf = render_cover_letter_pdf(rt.profile, text, appdir / f"{p.first_name}_{p.last_name}_Cover_Letter.docx",
+                                      template=repo.cover_letter_template(session))
+        cl_cache["path"] = pdf
+        if pdf is not None:
+            repo.store_document(session, kind="cover_letter", filename=pdf.name, content=pdf.read_bytes(),
+                                application_id=app.id)
+        return pdf
 
     tailoring_answers = {normalize_label(q): (v.get("text") if isinstance(v, dict) else v)
                          for q, v in (app.answers or {}).items()}

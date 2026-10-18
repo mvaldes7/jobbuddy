@@ -107,7 +107,8 @@ def test_push_tailoring_renders_uploads_and_advances(session, agent):
     assert a.tailored_resume["roles"][0]["bullets"][0]["source_id"] == "ex-mobile-app"
     assert a.answers["Why do you want to work at Acme Health?"]["source"] == "agent"
     docs = session.query(CandidateDocument).filter_by(application_id=app.id).all()
-    assert sorted(d.kind for d in docs) == ["cover_letter", "tailored_resume"]
+    # cover letters are only ever uploaded as PDF; with render_pdf=False only the text is stored
+    assert sorted(d.kind for d in docs) == ["tailored_resume"]
     assert all(d.content[:2] == b"PK" and d.size_bytes == len(d.content) for d in docs)  # real DOCX bytes
     assert not list(agent.workdir.rglob("*.docx"))  # local renders removed after upload
     assert agent.push_tailoring(good, render_pdf=False)["stale"] == 1

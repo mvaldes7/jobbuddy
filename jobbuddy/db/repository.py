@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import secrets
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable
 
@@ -383,6 +384,19 @@ def latest_document(session: Session, kind: str, application_id: int | None = No
     if application_id is not None:
         q = q.where(CandidateDocument.application_id == application_id)
     return session.scalar(q.order_by(CandidateDocument.id.desc()).limit(1))
+
+
+def cover_letter_template(session: Session) -> bytes | Path | None:
+    """Mike's cover-letter .docx (formatting template AND base letter): local profile file first, else the
+    latest .docx stored as kind 'cover_letter_sample' (that is how CI gets it, like the base resume)."""
+    from jobbuddy.tailoring.render import COVER_LETTER_TEMPLATE
+
+    if COVER_LETTER_TEMPLATE.exists():
+        return COVER_LETTER_TEMPLATE
+    doc = session.scalar(select(CandidateDocument).where(CandidateDocument.kind == "cover_letter_sample",
+                                                         CandidateDocument.filename.ilike("%.docx"))
+                         .order_by(CandidateDocument.id.desc()).limit(1))
+    return bytes(doc.content) if doc is not None else None
 
 
 def latest_document_text(session: Session, kind: str) -> str | None:

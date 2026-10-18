@@ -18,8 +18,9 @@ from jobbuddy.tailoring.validator import ClaimValidator, ValidationReport, conte
 
 log = logging.getLogger(__name__)
 
-SYSTEM = """You write cover letters in the candidate's own voice. Study the STYLE SAMPLE for tone,
-rhythm, sentence length and structure, but NEVER copy its company-specific content.
+SYSTEM = """You tailor the candidate's own cover letter (BASE LETTER) to a new role. Start from its text and
+keep his voice, wording and paragraph structure; replace the original company's specifics (role, company,
+mission tie-in) with ones for this job, and reorder proof points so the most relevant lead.
 
 Structure (4-5 short paragraphs, 300-420 words):
 1. Opening: name the exact role and company, then the candidate's personal hook about why healthcare
@@ -103,7 +104,7 @@ def generate_cover_letter(llm: LLMClient | None, profile: Profile, job: Any, sty
         return CoverLetter(text, rep, used_llm=False, notes=["template fallback (no LLM configured)"])
 
     user = (
-        f"STYLE SAMPLE (voice only):\n<<<\n{style_sample[:5000]}\n>>>\n\n"
+        f"BASE LETTER (Mike's own letter; tailor it, keep voice and structure):\n<<<\n{style_sample[:5000]}\n>>>\n\n"
         f"PERSONAL_HOOK:\n{profile.voice.personal_hook or '(none provided - use a brief, non-specific line about why healthcare technology matters)'}\n\n"
         f"CANDIDATE FACTS:\n{json.dumps(profile_brief(profile), ensure_ascii=False)}\n"
         f"Full name for signature: {profile.personal.full_name}\n\n"
