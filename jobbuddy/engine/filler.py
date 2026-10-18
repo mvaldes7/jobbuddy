@@ -15,12 +15,16 @@ from typing import Any, Callable
 
 from jobbuddy.config import EngineConfig
 from jobbuddy.engine.detectors import detect_blockers
-from jobbuddy.engine.field_mapper import FieldMapper, MapperContext, low_confidence_items, needs_cover_letter
+from jobbuddy.engine.field_mapper import (FieldMapper, MapperContext, _norm, low_confidence_items, match_option,
+                                         needs_cover_letter)
 from jobbuddy.engine.form_inspector import frame_for, inspect_page
 from jobbuddy.engine.human import Human
-from jobbuddy.engine.models import Button, FieldMapping, FillResult, FormField, StepRecord
+from jobbuddy.engine.models import Button, FieldMapping, FillResult, FormField, Option, StepRecord
 
 log = logging.getLogger(__name__)
+
+COMBO_WAIT_S = 5.0        # async autocompletes (e.g. Greenhouse location) can take a few seconds
+COMBO_MAX_OPTIONS = 200
 
 
 @dataclass(frozen=True)
@@ -81,6 +85,8 @@ class FormFiller:
                     await loc.select_option(label=str(m.value))
                 except Exception:
                     await loc.select_option(value=str(m.value))
+            elif f.type == "custom_select" and f.tag == "input":
+                return await self._fill_combobox(frame, loc, f, m)
             elif f.type == "custom_select":
                 await loc.click()
                 await h.pause(0.5)
@@ -105,7 +111,111 @@ class FormFiller:
                 await h.type_into(loc, str(m.value))
             await h.pause(0.4)
         except Exception as exc:
+            if f.type == "custom_select" and f.tag == "input":  # nothing selected: keep it on the approval card
+                m.value, m.confidence, m.reason = None, 0.0, f"dropdown fill failed ({type(exc).__name__})"
             return f"{f.field_id}: {type(exc).__name__}"
+        return None
+
+    # ---------- input[role=combobox] (Greenhouse react-select, autocompletes) ----------
+    async def _listbox_scope(self, frame: Any, loc: Any) -> Any:
+        """The listbox the combobox controls (react-select sets aria-controls while open), else the frame."""
+        for attr in ("aria-controls", "aria-owns"):
+            lb_id = await loc.get_attribute(attr)
+            if lb_id:
+                scope = frame.locator(f'[id="{lb_id}"]')
+                if await scope.count():
+                    return scope
+        return frame
+
+    async def _visible_options(self, frame: Any, loc: Any) -> list[str]:
+        scope = await self._listbox_scope(frame, loc)
+        opts = scope.locator('[role="option"]')
+        out: list[str] = []
+        for i in range(min(await opts.count(), COMBO_MAX_OPTIONS)):
+            o = opts.nth(i)
+            try:
+                if await o.is_visible():
+                    t = re.sub(r"\s+", " ", (await o.inner_text(timeout=1000)) or "").strip()
+                    if t:
+                        out.append(t)
+            except Exception:
+                continue
+        return out
+
+    async def _wait_options(self, frame: Any, loc: Any, timeout_s: float) -> list[str]:
+        """Poll until options render (async autocompletes need a moment), then let the list settle."""
+        deadline = time.monotonic() + timeout_s
+        opts: list[str] = []
+        while True:
+            opts = await self._visible_options(frame, loc)
+            if opts or time.monotonic() >= deadline:
+                break
+            await asyncio.sleep(0.25)
+        if opts:
+            await asyncio.sleep(0.4)
+            opts = await self._visible_options(frame, loc) or opts
+        return opts
+
+    @staticmethod
+    def _pick(value: str, labels: list[str]) -> str | None:
+        opt, _score = match_option(value, [Option(label=t) for t in labels])
+        return opt.label if opt else None
+
+    async def _fill_combobox(self, frame: Any, loc: Any, f: FormField, m: FieldMapping) -> str | None:
+        """Type to filter, then click the option whose accessible name is exactly the chosen label.
+        Enter is only a fallback when that option is visible and first in the list. Typed text alone is
+        never trusted: react-select discards it on blur unless an option was chosen."""
+        value = str(m.value).strip()
+        if not value:
+            return None
+        if f.current_value and _norm(str(f.current_value)) == _norm(value):
+            return None
+        h = self.ctx.human
+        await h.type_into(loc, value)
+        seen = await self._wait_options(frame, loc, COMBO_WAIT_S)
+        target = self._pick(value, seen)
+        if target is None:
+            # Typed text matched nothing (e.g. "Authorized to work in the US" vs Yes/No): clear the filter
+            # to see the full list, pick the best match there, then filter down to it.
+            await loc.fill("")
+            opts = await self._wait_options(frame, loc, 1.0)
+            if not opts:
+                await loc.press("ArrowDown")
+                opts = await self._wait_options(frame, loc, 1.0)
+            seen = seen or opts
+            target = self._pick(value, opts)
+            if target is not None:
+                await loc.press_sequentially(target, delay=h.key_delay())
+                await self._wait_options(frame, loc, COMBO_WAIT_S)
+        if target is None:
+            if not seen:
+                # No options ever rendered: a free-text combobox. Keep the typed value.
+                await h.type_into(loc, value)
+                return None
+            await loc.fill("")
+            await loc.press("Escape")
+            m.value, m.confidence = None, 0.0
+            m.suggestions = seen[:8]
+            m.reason = f"no option matches '{value[:60]}'"
+            return f"{f.field_id}: no option matches"
+        scope = await self._listbox_scope(frame, loc)
+        opt = scope.get_by_role("option", name=target, exact=True)
+        if await opt.count() and await opt.first.is_visible():
+            await opt.first.click()
+        else:
+            visible = await self._visible_options(frame, loc)
+            if visible and visible[0] == target:
+                await loc.press("Enter")
+            else:
+                await loc.fill("")
+                await loc.press("Escape")
+                m.value, m.confidence = None, 0.0
+                m.suggestions = (visible or seen)[:8]
+                m.reason = f"option '{target[:60]}' not clickable"
+                return f"{f.field_id}: option not clickable"
+        if target != value:
+            m.value = target  # the approval card shows what was actually selected
+        await h.pause(0.4)
         return None
 
     def _file_for(self, m: FieldMapping) -> Path | None:

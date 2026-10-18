@@ -1,0 +1,89 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Greenhouse react-select fixture</title>
+<style>.menu{border:1px solid #999}.hidden{display:none}.requiredInput{opacity:0;height:1px;width:1px;position:absolute}</style>
+</head><body>
+<!-- Mimics job-boards.greenhouse.io react-select: input[role=combobox] + "Select..." placeholder + an
+     aria-hidden requiredInput proxy. Typed text is discarded on blur unless an option was chosen. -->
+<form id="app" onsubmit="window.__submitted = true; return false;">
+  <div class="select__container" data-q="country"><label id="country-label" for="country">Country<span aria-hidden="true">*</span></label>
+    <div class="select__control"><div class="select__value-container"><div class="select__placeholder">Select...</div>
+      <div class="select__input-container"><input id="country" role="combobox" type="text" aria-required="true" aria-labelledby="country-label"></div></div></div>
+    <input required tabindex="-1" aria-hidden="true" class="requiredInput" value=""></div>
+
+  <div class="select__container" data-q="loc" data-async="1"><label id="loc-label" for="candidate-location">Location (City)<span aria-hidden="true">*</span></label>
+    <div class="select__control"><div class="select__value-container"><div class="select__placeholder">Select...</div>
+      <div class="select__input-container"><input id="candidate-location" role="combobox" type="text" aria-required="true" aria-labelledby="loc-label"></div></div></div>
+    <input required tabindex="-1" aria-hidden="true" class="requiredInput" value=""></div>
+
+  <div class="select__container" data-q="yn"><label id="question_1-label" for="question_1">Do you have experience working on commercial data platforms?<span aria-hidden="true">*</span></label>
+    <div class="select__control"><div class="select__value-container"><div class="select__placeholder">Select...</div>
+      <div class="select__input-container"><input id="question_1" role="combobox" type="text" aria-required="true" aria-labelledby="question_1-label"></div></div></div>
+    <input required tabindex="-1" aria-hidden="true" class="requiredInput" value=""></div>
+
+  <div class="select__container" data-q="yn"><label id="question_2-label" for="question_2">Are you legally authorized to work in the United States?<span aria-hidden="true">*</span></label>
+    <div class="select__control"><div class="select__value-container"><div class="select__placeholder">Select...</div>
+      <div class="select__input-container"><input id="question_2" role="combobox" type="text" aria-required="true" aria-labelledby="question_2-label"></div></div></div>
+    <input required tabindex="-1" aria-hidden="true" class="requiredInput" value=""></div>
+
+  <div class="select__container" data-q="yn"><label id="question_3-label" for="question_3">Do you have at least 5 years of experience in biotechnology?<span aria-hidden="true">*</span></label>
+    <div class="select__control"><div class="select__value-container"><div class="select__placeholder">Select...</div>
+      <div class="select__input-container"><input id="question_3" role="combobox" type="text" aria-required="true" aria-labelledby="question_3-label"></div></div></div>
+    <input required tabindex="-1" aria-hidden="true" class="requiredInput" value=""></div>
+
+  <div class="select__container" data-q="gender"><label id="gender-label" for="gender">Gender</label>
+    <div class="select__control"><div class="select__value-container"><div class="select__placeholder">Select...</div>
+      <div class="select__input-container"><input id="gender" role="combobox" type="text" aria-labelledby="gender-label"></div></div></div></div>
+
+  <button type="submit" id="submit">Submit application</button>
+</form>
+<script>
+window.__submitted = false;
+const LISTS = {
+  country: ["Canada +1", "United States +1", "United States Minor Outlying Islands +1", "United Kingdom +44"],
+  yn: ["Yes", "No"],
+  gender: ["Male", "Female", "Decline To Self Identify"],
+};
+const CITIES = ["San Francisco, California, United States", "South San Francisco, California, United States"];
+document.querySelectorAll('.select__container').forEach((c, idx) => {
+  const input = c.querySelector('input[role=combobox]');
+  const ph = c.querySelector('.select__placeholder');
+  const req = c.querySelector('.requiredInput');
+  const lbId = 'react-select-' + input.id + '-listbox';
+  let menu = null, timer = null;
+  const close = () => { if (menu) menu.remove(); menu = null; input.removeAttribute('aria-controls'); input.setAttribute('aria-expanded', 'false'); };
+  const choose = (label) => {
+    let sv = c.querySelector('.select__single-value');
+    if (!sv) { sv = document.createElement('div'); sv.className = 'select__single-value'; ph.after(sv); }
+    sv.textContent = label; ph.classList.add('hidden'); if (req) req.value = label; input.value = ''; close();
+  };
+  const render = (items) => {
+    close();
+    menu = document.createElement('div'); menu.className = 'menu'; menu.id = lbId; menu.setAttribute('role', 'listbox');
+    items.forEach(t => { const o = document.createElement('div'); o.setAttribute('role', 'option'); o.textContent = t;
+      o.addEventListener('mousedown', e => { e.preventDefault(); choose(t); }); menu.appendChild(o); });
+    if (!items.length) { const n = document.createElement('div'); n.textContent = 'No options'; menu.appendChild(n); }
+    c.appendChild(menu); input.setAttribute('aria-controls', lbId); input.setAttribute('aria-expanded', 'true');
+  };
+  const update = () => {
+    const t = input.value.toLowerCase();
+    if (c.dataset.async) {  // location autocomplete: results arrive later, only for typed text
+      clearTimeout(timer); close();
+      if (t.length >= 3) timer = setTimeout(() => render(CITIES.filter(x => x.toLowerCase().includes(t.split(',')[0].trim()))), 600);
+      return;
+    }
+    render(LISTS[c.dataset.q].filter(x => x.toLowerCase().includes(t)));
+  };
+  input.addEventListener('focus', () => { if (!c.dataset.async) update(); });
+  input.addEventListener('input', update);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown' && !menu) update();
+    if (e.key === 'Escape') { input.value = ''; close(); }
+    if (e.key === 'Enter') {
+      const first = menu && menu.querySelector('[role=option]');
+      if (first) { e.preventDefault(); choose(first.textContent); }  // like react-select: Enter picks the focused option
+    }
+  });
+  input.addEventListener('blur', () => { input.value = ''; close(); });  // typed text is discarded
+});
+</script>
+</body></html>

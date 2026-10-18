@@ -4,6 +4,8 @@ Label resolution order (first non-empty wins):
   label[for=id] -> aria-labelledby -> wrapping <label> -> aria-label -> placeholder ->
   Workday formField container label -> nearest preceding text (siblings / ancestors) -> title -> name/id
 Each control is stamped with data-jb-id so the filler can address it unambiguously in this page state.
+input[role=combobox] (Greenhouse/react-select dropdowns and autocompletes) is reported as custom_select; its
+options usually render only while the menu is open, so the filler discovers them at fill time.
 """
 from __future__ import annotations
 
@@ -109,6 +111,17 @@ EXTRACT_JS = r"""
     }
     return nearestText(el) || ['', 'none'];
   };
+  // Value already chosen in an input[role=combobox] (react-select renders it beside the input, not in it).
+  const comboValue = el => {
+    if (el.value) return el.value;
+    let node = el.parentElement;
+    for (let depth = 0; depth < 4 && node; depth++, node = node.parentElement) {
+      const sv = node.querySelector('[class*="single-value"], [class*="singleValue"]');
+      if (sv) return clean(sv.textContent);
+      if (node.matches('.select__control, [class*="-control"]')) break;
+    }
+    return '';
+  };
   const isRequired = (el, label) => !!(el.required || el.getAttribute('aria-required') === 'true' || /\*\s*$/.test(label || ''));
   const autoId = el => el.getAttribute('data-automation-id') || null;
   const containerAuto = el => { const c = el.parentElement && el.parentElement.closest('[data-automation-id]'); return c ? c.getAttribute('data-automation-id') : null; };
@@ -123,7 +136,11 @@ EXTRACT_JS = r"""
       const tag = el.tagName.toLowerCase();
       let type = (el.getAttribute('type') || (tag === 'textarea' ? 'textarea' : tag === 'select' ? 'select' : 'text')).toLowerCase();
       if (['hidden','submit','button','reset','image','search'].includes(type) && tag === 'input') continue;
-      if (tag === 'button' || (el.getAttribute('role') === 'combobox' && tag !== 'input' && tag !== 'select')) type = 'custom_select';
+      // Proxy inputs hidden from users and assistive tech (e.g. Greenhouse react-select's "requiredInput"
+      // that sits next to each dropdown) are not questions; the real control is the combobox before it.
+      if (tag === 'input' && type !== 'file' && el.getAttribute('aria-hidden') === 'true' && el.getAttribute('tabindex') === '-1') continue;
+      if (tag === 'button' || (el.getAttribute('role') === 'combobox' && tag !== 'select' &&
+          (tag !== 'input' || ['text', 'search', ''].includes(type)))) type = 'custom_select';
       const visible = isVisible(el);
       if (!visible && type !== 'file') continue;  // file inputs are often visually hidden behind a styled button
       if (el.disabled) continue;
@@ -157,7 +174,8 @@ EXTRACT_JS = r"""
         placeholder: el.getAttribute('placeholder'), required: isRequired(el, label), options,
         accept: el.getAttribute('accept'), multiple: !!el.multiple,
         max_length: el.maxLength && el.maxLength > 0 ? el.maxLength : null,
-        current_value: type === 'checkbox' ? el.checked : (type === 'file' ? null : (tag === 'button' ? clean(el.textContent) : el.value)),
+        current_value: type === 'checkbox' ? el.checked : (type === 'file' ? null : (tag === 'button' ? clean(el.textContent) :
+          (tag === 'input' && type === 'custom_select' ? comboValue(el) : el.value))),
         in_shadow: inShadow });
     }
   }

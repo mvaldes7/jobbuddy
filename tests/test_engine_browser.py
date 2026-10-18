@@ -142,3 +142,35 @@ async def test_submit_requires_real_token_and_complete_fields(browser_context, p
     res3 = await FormFiller(make_ctx(profile, app_config, tmp_path, "greenhouse", overrides=edits)).run(page3, approval=token)
     assert res3.status == "submitted", res3.error
     assert await (await gh_frame(page3)).evaluate("window.__submitted") is True
+
+
+def _picked(frame_or_page, field_id):
+    return frame_or_page.evaluate(
+        "id => { const c = document.getElementById(id).closest('.select__container');"
+        " const sv = c.querySelector('.select__single-value'); return sv ? sv.textContent : null; }", field_id)
+
+
+async def test_greenhouse_react_select_comboboxes(browser_context, profile, app_config, tmp_path):
+    """input[role=combobox] dropdowns are chosen by clicking the option; aria-hidden proxy inputs are ignored."""
+    page = await browser_context.new_page()
+    await page.goto(fixture_url("greenhouse_react_select.html"))
+    snap = await inspect_page(page)
+    assert all(f.label != "Select..." for f in snap.fields)  # requiredInput proxies are skipped
+    by = {f.field_id: f for f in snap.fields}
+    assert by["question_1"].type == "custom_select" and by["question_1"].required
+    assert by["question_1"].label == "Do you have experience working on commercial data platforms?"
+    overrides = {"question_1": "Yes", "question_2": "Authorized to work in the US", "question_3": "8"}
+    res = await FormFiller(make_ctx(profile, app_config, tmp_path, "greenhouse", overrides=overrides)).run(page)
+    assert res.status == "awaiting_approval"
+    assert await page.evaluate("window.__submitted") is False
+    assert await _picked(page, "country") == "United States +1"
+    assert await _picked(page, "candidate-location") == "San Francisco, California, United States"  # async options
+    assert await _picked(page, "question_1") == "Yes"
+    assert await _picked(page, "question_2") == "Yes"  # yes/no synonym matched against the rendered options
+    assert await _picked(page, "gender") == "Decline To Self Identify"
+    assert await _picked(page, "question_3") is None  # "8" matches no option: left empty, never guessed
+    low = {i["field_id"]: i for i in res.low_confidence}
+    assert set(low) == {"question_3"}
+    assert low["question_3"]["value"] is None and low["question_3"]["suggestions"] == ["Yes", "No"]
+    mapped = {m.field_id: m.value for m in res.steps[0].mappings}
+    assert mapped["country"] == "United States +1" and mapped["question_2"] == "Yes"

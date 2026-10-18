@@ -38,9 +38,18 @@ next CI run refills the form from scratch (`run-ci` never keeps browser state be
   `<label>` → `aria-label` → `placeholder` → Workday `formField-*` container label → nearest preceding
   text → `title` → `name`/`id`.
 * Types recognized: text, email, tel, url, number, date, textarea, native `select`, custom listboxes
-  (Workday `button[aria-haspopup=listbox]`), radio groups and checkbox groups (grouped by `name`), single
+  (Workday `button[aria-haspopup=listbox]`, and `input[role=combobox]` such as Greenhouse's react-select
+  dropdowns and location autocomplete), radio groups and checkbox groups (grouped by `name`), single
   checkbox, and file. Each field records `required` (attribute, `aria-required`, or `*` in the label),
   `max_length`, and options.
+* Inputs marked `aria-hidden="true"` with `tabindex="-1"` (Greenhouse's hidden "requiredInput" next to
+  each dropdown, whose nearest text is the "Select..." placeholder) are proxies, not questions, and are skipped.
+* Combobox inputs (`input[role=combobox]`) render options only while open, so the filler discovers them at
+  fill time: it types the value, picks the best rendered option (exact → normalized → yes/no synonyms →
+  token overlap; if the typed text filters everything out it clears the filter and matches against the full
+  list), then clicks the option by role and exact accessible name. Enter is only a fallback when that
+  option is visible and first. Typed text alone is never trusted (react-select drops it on blur). If no
+  option matches, the field is cleared and listed on the approval card with the options as suggestions.
 * Buttons are classified as submit, next, or other. Button text wins over automation ids, so a Workday
   "Next" button that turns into "Submit" on the last page is treated as Submit.
 
