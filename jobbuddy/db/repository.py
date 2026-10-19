@@ -227,6 +227,7 @@ def reconcile(session: Session, *, save_learned: Callable[[Application, dict[str
                 # Re-fill with the edits on the next run, then a fresh card (new screenshot + nonce) goes out.
                 transition(session, app, AppStatus.TAILORED, actor=row.decided_via, note="re-fill with human edits")
                 app.notified_at = None
+                app.approval_nonce = None  # the old card can never approve the re-filled form
             stats["edited"] += 1
         elif row.decision == "approve":
             if app.status != AppStatus.AWAITING_APPROVAL.value:

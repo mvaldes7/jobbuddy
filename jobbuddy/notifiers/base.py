@@ -27,6 +27,9 @@ class Decision:
     actor: str = "mike"
     nonce: str | None = None             # from the button's callback data (Telegram)
     telegram_user_id: str | None = None
+    # Reply to an Edit prompt: "<n> = value" lines, resolved to field_ids by the pipeline (pipeline state).
+    numbered_edits: dict[int, str] = field(default_factory=dict)
+    reply_to_message_id: int | None = None
 
 
 class Notifier(Protocol):

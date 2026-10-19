@@ -14,6 +14,7 @@ applications:  scored (waits for agent tailoring) -> tailored -> [needs_answers 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import tempfile
 import time
@@ -36,7 +37,7 @@ from jobbuddy.fetchers.base import CompanyTarget, PoliteHttp, load_companies
 from jobbuddy.fetchers.email_alerts import ALERT_SOURCES
 from jobbuddy.matching.filters import apply_filters
 from jobbuddy.matching.similarity import embed_profile, job_text
-from jobbuddy.notifiers.base import ApprovalRequest, Notifier, NullNotifier, build_notifier
+from jobbuddy.notifiers.base import ApprovalRequest, Decision, Notifier, NullNotifier, build_notifier
 from jobbuddy.profile import Profile, load_profile, load_style_sample
 from jobbuddy.vector_store import get_vector_store
 
@@ -548,6 +549,95 @@ def _save_learned_from_edits(session: Session, app: Application, edits: dict[str
                                   profile_key=None, static_value=str(value), field_type=ftype, source="human")
 
 
+EDIT_PROMPTS_KEY = "telegram_edit_prompts"  # {prompt message_id: {"app_id": int, "fields": {"1": field_id}}}
+
+
+def _load_edit_prompts(session: Session) -> dict[str, dict[str, Any]]:
+    try:
+        data = json.loads(repo.kv_get(session, EDIT_PROMPTS_KEY) or "{}")
+        return data if isinstance(data, dict) else {}
+    except ValueError:
+        return {}
+
+
+def _fmt_value(v: Any) -> str:
+    if isinstance(v, bool):
+        return "Yes" if v else "No"
+    if isinstance(v, list):
+        return ", ".join(str(x) for x in v)
+    return "" if v is None else str(v)
+
+
+def edit_field_items(app: Application) -> list[tuple[int, str, str, str]]:
+    """(number, field_id, label, current value) for every filled field, human edits taking precedence."""
+    edits = dict(app.human_edits or {})
+    out: list[tuple[int, str, str, str]] = []
+    seen: set[str] = set()
+    for step in (app.filled_state or {}).get("steps", []):
+        maps = {m.get("field_id"): m for m in step.get("mappings", []) if isinstance(m, dict)}
+        for f in step.get("fields", []):
+            fid = f.get("field_id")
+            if not fid or fid in seen:
+                continue
+            seen.add(fid)
+            m = maps.get(fid) or {}
+            if fid in edits:
+                value = _fmt_value(edits[fid])
+            elif m.get("file_kind"):
+                value = f"({m['file_kind'].replace('_', ' ')} file)"
+            else:
+                value = _fmt_value(m.get("value"))
+            out.append((len(out) + 1, fid, (f.get("label") or fid).strip(), value[:200]))
+    return out
+
+
+def _send_edit_prompt(session: Session, rt: Runtime, prompts: dict[str, dict[str, Any]], app: Application) -> None:
+    send = getattr(rt.notifier, "send_edit_prompt", None)
+    if send is None:
+        return
+    items = edit_field_items(app)
+    job = app.job
+    title = f"{job.title} @ {job.company_name}" if job is not None else ""
+    try:
+        ids = send(app.id, title, [(n, label, value) for n, _fid, label, value in items])
+    except Exception as exc:
+        log.warning("sending edit prompt failed: %s", type(exc).__name__)
+        return
+    for k in [k for k, v in prompts.items() if v.get("app_id") == app.id]:
+        del prompts[k]  # only the newest prompt per app is live
+    fields = {str(n): fid for n, fid, _l, _v in items}
+    for mid in ids:
+        prompts[str(mid)] = {"app_id": app.id, "fields": fields}
+    repo.log_event(session, app, "edit_prompt", app.status, app.status, actor="telegram",
+                   payload={"fields": len(fields)})
+
+
+def _resolve_numbered_edit(session: Session, rt: Runtime, prompts: dict[str, dict[str, Any]],
+                           d: Decision) -> Decision | None:
+    """Map a `<n> = value` reply to field_ids via the stored prompt. Never approves anything."""
+    prompt = prompts.get(str(d.reply_to_message_id)) if d.reply_to_message_id is not None else None
+    if prompt is None:
+        apps = {v.get("app_id") for v in prompts.values()}
+        if len(apps) != 1:
+            if prompts or d.reply_to_message_id is None:
+                _alert(rt, "Couldn't tell which application that edit is for: reply directly to the edit prompt "
+                           "(or use `#<id> <field_id> = <value>`).")
+            return None
+        prompt = next(iter(prompts.values()))
+    app_id = int(prompt["app_id"])
+    fields = prompt.get("fields") or {}
+    edits = {fields[str(n)]: v for n, v in d.numbered_edits.items() if str(n) in fields}
+    bad = sorted(n for n in d.numbered_edits if str(n) not in fields)
+    if bad:
+        _alert(rt, f"#{app_id}: ignored unknown field number(s) {', '.join(map(str, bad))}.")
+    if not edits:
+        return None
+    for k in [k for k, v in prompts.items() if v.get("app_id") == app_id]:
+        del prompts[k]  # prompt consumed; tap Edit on the new card to edit again
+    return Decision(application_id=app_id, action="edit", via=d.via, edits=edits,
+                    telegram_user_id=d.telegram_user_id)
+
+
 def stage_decisions(session: Session, rt: Runtime) -> dict[str, int]:
     """Poll Telegram (etc.), INSERT approvals rows, then reconcile approvals + dashboard events."""
     state = {"telegram_offset": repo.kv_get(session, "telegram_offset") or "0",
@@ -558,7 +648,14 @@ def stage_decisions(session: Session, rt: Runtime) -> dict[str, int]:
     except Exception as exc:
         log.warning("polling decisions failed: %s", type(exc).__name__)
         decisions = []
+    prompts = _load_edit_prompts(session)
+    edit_taps: list[Application] = []
     for d in decisions:
+        if d.numbered_edits:
+            d = _resolve_numbered_edit(session, rt, prompts, d)
+            if d is None:
+                rejected += 1
+                continue
         app = session.get(Application, d.application_id)
         if app is None:
             rejected += 1
@@ -575,8 +672,13 @@ def stage_decisions(session: Session, rt: Runtime) -> dict[str, int]:
             rejected += 1
         else:
             inserted += 1
+            if d.nonce and d.action == "edit":
+                edit_taps.append(app)
+    for app in edit_taps:
+        _send_edit_prompt(session, rt, prompts, app)
     for k, v in state.items():
         repo.kv_set(session, k, v)
+    repo.kv_set(session, EDIT_PROMPTS_KEY, json.dumps(prompts))
     stats = repo.reconcile(session, save_learned=lambda a, e: _save_learned_from_edits(session, a, e))
     stats.update({"decisions_inserted": inserted, "decisions_rejected": rejected})
     session.flush()

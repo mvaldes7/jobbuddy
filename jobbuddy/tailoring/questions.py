@@ -21,7 +21,7 @@ SENSITIVE_PATTERNS: list[tuple[str, str]] = [
     (r"sponsor", "application_answers.requires_sponsorship"),
     (r"salary|compensation|pay (?:range|expectation)|desired pay|expected pay", "application_answers.salary_expectation_text"),
     (r"start date|when can you start|notice period|available to start", "application_answers.start_date"),
-    (r"relocat", "application_answers.willing_to_relocate"),
+    (r"relocat|commut|are you (currently )?(located|based|living) (in|near|within)|live (in|near|within) .*(area|commut)|(work|be) (in|from|at) (the |our )?office|in[- ]office|on[- ]?site", "application_answers.willing_to_relocate"),
     (r"gender|race|ethnic|hispanic|latino|veteran|disabilit|sexual orientation|pronoun|transgender", "application_answers.eeo"),
     (r"criminal|convicted|felony|background check", "__human__"),
 ]

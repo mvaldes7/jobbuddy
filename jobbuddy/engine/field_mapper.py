@@ -70,7 +70,7 @@ LABEL_RULES: list[tuple[str, str]] = [
     (r"sponsor", "application_answers.requires_sponsorship"),
     (r"salary|compensation|desired pay|pay expectation|expected pay", "application_answers.salary_expectation_text"),
     (r"start date|when can you start|notice period|available to start|date available", "application_answers.start_date"),
-    (r"relocat", "application_answers.willing_to_relocate"),
+    (r"relocat|commut|are you (currently )?(located|based|living) (in|near|within)|live (in|near|within) .*(area|commut)|(work|be) (in|from|at) (the |our )?office|in[- ]office|on[- ]?site", "application_answers.willing_to_relocate"),
     (r"hispanic|latino", "application_answers.eeo.hispanic_latino"),
     (r"gender|^sex$", "application_answers.eeo.gender"),
     (r"race|ethnicit", "application_answers.eeo.race_ethnicity"),
