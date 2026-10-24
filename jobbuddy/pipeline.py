@@ -638,11 +638,28 @@ def _resolve_numbered_edit(session: Session, rt: Runtime, prompts: dict[str, dic
                     telegram_user_id=d.telegram_user_id)
 
 
+RESEND_CARDS_KEY = "resend_cards"  # "1" -> next run re-sends a fresh card (new nonce) for every awaiting app
+
+
+def request_fresh_cards(session: Session) -> int:
+    """Invalidate every outstanding approval card: clear the nonce (old buttons can never approve) and
+    notified_at, so stage_notify sends a new card with a new nonce. Never approves or submits anything."""
+    apps = session.scalars(select(Application).where(
+        Application.status == AppStatus.AWAITING_APPROVAL.value)).all()
+    for app in apps:
+        app.approval_nonce = None
+        app.notified_at = None
+        repo.log_event(session, app, "resend_card", app.status, app.status, note="fresh approval card requested")
+    session.flush()
+    return len(apps)
+
+
 def stage_decisions(session: Session, rt: Runtime) -> dict[str, int]:
     """Poll Telegram (etc.), INSERT approvals rows, then reconcile approvals + dashboard events."""
     state = {"telegram_offset": repo.kv_get(session, "telegram_offset") or "0",
              "slack_oldest": repo.kv_get(session, "slack_oldest") or "0"}
     inserted = rejected = 0
+    resent = 0
     try:
         decisions = rt.notifier.poll_decisions(state)
     except Exception as exc:
@@ -676,11 +693,19 @@ def stage_decisions(session: Session, rt: Runtime) -> dict[str, int]:
                 edit_taps.append(app)
     for app in edit_taps:
         _send_edit_prompt(session, rt, prompts, app)
+    gap = state.pop("telegram_gap", None)
     for k, v in state.items():
         repo.kv_set(session, k, v)
     repo.kv_set(session, EDIT_PROMPTS_KEY, json.dumps(prompts))
+    if gap or repo.kv_get(session, RESEND_CARDS_KEY) == "1":
+        resent = request_fresh_cards(session)
+        repo.kv_set(session, RESEND_CARDS_KEY, "0")
+        if gap:
+            _alert(rt, f"Some Telegram taps (updates {gap}) were taken by another app using this bot token and "
+                       f"never reached jobbuddy. Fresh cards are on the way for {resent} pending application(s); "
+                       "please tap again on the NEW cards. Old buttons no longer work.")
     stats = repo.reconcile(session, save_learned=lambda a, e: _save_learned_from_edits(session, a, e))
-    stats.update({"decisions_inserted": inserted, "decisions_rejected": rejected})
+    stats.update({"decisions_inserted": inserted, "decisions_rejected": rejected, "cards_resent": resent})
     session.flush()
     return stats
 

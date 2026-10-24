@@ -180,7 +180,17 @@ class TelegramNotifier:
         if offset:
             payload["offset"] = offset + 1
         data = self._call("getUpdates", json=payload)
-        decisions, max_id = self.parse_updates(data.get("result", []))
+        updates = data.get("result", []) or []
+        ids = [int(u["update_id"]) for u in updates if "update_id" in u]
+        # Telegram update_ids are sequential per bot. If the first update we see is past offset+1, some other
+        # getUpdates consumer (another process using the same bot token) confirmed and swallowed the updates in
+        # between, e.g. Approve taps. Flag it so the pipeline re-sends fresh cards instead of losing them silently.
+        if offset and ids and min(ids) > offset + 1:
+            state["telegram_gap"] = f"{offset + 1}-{min(ids) - 1}"
+            log.warning("telegram updates %s were consumed by another getUpdates client (shared bot token?)",
+                        state["telegram_gap"])
+        log.info("telegram getUpdates: %d update(s) after offset %s", len(updates), offset)
+        decisions, max_id = self.parse_updates(updates)
         if max_id is not None:
             state["telegram_offset"] = str(max_id)
         return decisions

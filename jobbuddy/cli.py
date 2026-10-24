@@ -123,6 +123,19 @@ def submit(confirm: bool = typer.Option(False, "--confirm", help="Required: real
         _echo(asyncio.run(stage_submit(s, _runtime(s, profile), confirm=True, app_ids=app_id or None)))
 
 
+@app.command("resend-cards")
+def resend_cards_cmd() -> None:
+    """Ask the next run to re-send a fresh approval card (new nonce) for every awaiting_approval app."""
+    from jobbuddy.db import repository as repo
+    from jobbuddy.db.session import session_scope
+    from jobbuddy.pipeline import RESEND_CARDS_KEY
+
+    _setup(profile_needed=False)
+    with session_scope() as s:
+        repo.kv_set(s, RESEND_CARDS_KEY, "1")
+    typer.echo("fresh cards will be sent on the next run")
+
+
 @app.command("run-ci")
 def run_ci_cmd(trigger: str = typer.Option("cron")) -> None:
     """CI: decisions -> fetch -> filter/embed -> fill -> notify -> manual digest -> (submit if AUTO_SUBMIT) -> report."""
