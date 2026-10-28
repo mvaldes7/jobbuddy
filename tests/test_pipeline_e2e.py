@@ -134,20 +134,13 @@ async def test_full_pipeline_ci_and_agent_split(tmp_path, settings, session, pro
         assert d2["approved"] == 1 and d2["decisions_rejected"] == 1
         assert app.status == "approved" and app.approved_via == "telegram"
 
-        # AUTO_SUBMIT is false: the run-ci submit stage does nothing
+        # submission is retired: even an approved app with --confirm is never submitted
         assert (await stage_submit(session, rt, page_factory=browser_context))["submitted"] == 0
         out = await stage_submit(session, rt, confirm=True, page_factory=browser_context)
-        assert out["submitted"] == 1, app.error
-        assert app.status == "submitted" and app.submitted_at is not None
-        row = session.query(Approval).filter_by(application_id=app.id, decision="approve").one()
-        assert row.consumed_at is not None and row.telegram_user_id == "777"
-        chain = [e.to_status for e in session.query(ApplicationEvent).filter_by(application_id=app.id,
-                                                                                event_type="transition")]
-        assert chain == ["scored", "tailored", "needs_answers", "tailored", "filled", "awaiting_approval", "tailored",
-                         "filled", "awaiting_approval", "approved", "submitted"]
-        assert (await stage_submit(session, rt, confirm=True, page_factory=browser_context))["submitted"] == 0
+        assert out["submitted"] == 0 and out.get("disabled") is True
+        assert app.status == "approved" and app.submitted_at is None
         assert not no_llm.called
 
     rep = build_report(session)
-    assert rep["submitted_total"] == 1 and rep["applications_by_status"] == {"submitted": 1}
+    assert rep["submitted_total"] == 0 and rep["applications_by_status"] == {"approved": 1}
     assert rep["agent_queues"] == {"score": 0, "tailor": 0, "questions": 0}

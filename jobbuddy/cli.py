@@ -115,12 +115,32 @@ def submit(confirm: bool = typer.Option(False, "--confirm", help="Required: real
     from jobbuddy.db.session import session_scope
     from jobbuddy.pipeline import stage_submit
 
+    from jobbuddy.pipeline import SUBMISSION_RETIRED
+
+    if SUBMISSION_RETIRED:
+        typer.echo("Submission is retired: jobbuddy sends listings + cover letters to Mike; he applies himself.")
+        raise typer.Exit(code=2)
     _, profile = _setup()
     if not confirm:
         typer.echo("Refusing to submit without --confirm (AUTO_SUBMIT is respected only by run-ci).")
         raise typer.Exit(code=2)
     with session_scope() as s:
         _echo(asyncio.run(stage_submit(s, _runtime(s, profile), confirm=True, app_ids=app_id or None)))
+
+
+@app.command("send-to-user")
+def send_to_user_cmd(app_id: list[int] = typer.Option(None, "--app"),
+                     backfill: bool = typer.Option(False, "--backfill",
+                                                   help="Also send open legacy apps (awaiting_approval/paused/...)")) -> None:
+    """Send listing + cover letter PDF to Mike in Telegram and mark the app 'sent_to_user'. Never submits."""
+    from jobbuddy.db.session import session_scope
+    from jobbuddy.pipeline import SEND_READY_STATUSES, stage_send_to_user
+
+    statuses = SEND_READY_STATUSES + (("needs_answers", "filled", "awaiting_approval", "approved", "paused")
+                                      if backfill else ())
+    _, profile = _setup()
+    with session_scope() as s:
+        _echo(stage_send_to_user(s, _runtime(s, profile), app_id or None, statuses=statuses))
 
 
 @app.command("resend-cards")

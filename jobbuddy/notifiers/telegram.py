@@ -90,6 +90,12 @@ class TelegramNotifier:
         self._call("sendMessage", json={"chat_id": self.chat_id, "text": "\n\n".join(body)[:4000],
                                         "disable_web_page_preview": True})
 
+    def send_document(self, caption: str, filename: str, content: bytes,
+                      content_type: str = "application/pdf") -> dict[str, Any]:
+        """sendDocument with a caption (<= 1024 chars). No inline keyboard: nothing to approve."""
+        return self._call("sendDocument", data={"chat_id": self.chat_id, "caption": caption[:1024]},
+                          files={"document": (filename, content, content_type)})
+
     def send_alert(self, text: str, screenshot_png: bytes | None = None) -> None:
         if screenshot_png:
             self._call("sendPhoto", data={"chat_id": self.chat_id, "caption": text[:1000]},

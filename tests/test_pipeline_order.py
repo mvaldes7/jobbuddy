@@ -25,7 +25,8 @@ def _record(monkeypatch, calls):
             return {}
         return f
 
-    for name in ("stage_decisions", "stage_notify", "stage_filter_embed", "stage_manual_digest"):
+    for name in ("stage_decisions", "stage_notify", "stage_filter_embed", "stage_manual_digest",
+                 "stage_send_to_user"):
         monkeypatch.setattr(pipeline, name, sync(name))
     for name in ("stage_fill", "stage_fetch", "stage_submit"):
         monkeypatch.setattr(pipeline, name, asyn(name))
@@ -33,21 +34,20 @@ def _record(monkeypatch, calls):
 
 
 @pytest.mark.asyncio
-async def test_run_ci_fills_and_notifies_before_fetch(monkeypatch, session):
+async def test_run_ci_sends_to_user_before_fetch_and_never_fills_or_submits(monkeypatch, session):
     calls: list[str] = []
     _record(monkeypatch, calls)
     await pipeline.run_ci(session, _rt(lambda: 1200.0))
-    assert calls == ["stage_decisions", "stage_notify", "stage_fill", "stage_notify", "stage_submit", "stage_fetch",
-                     "stage_filter_embed", "stage_manual_digest"]
+    assert calls == ["stage_send_to_user", "stage_fetch", "stage_filter_embed", "stage_manual_digest"]
 
 
 @pytest.mark.asyncio
-async def test_run_ci_still_fills_and_notifies_when_budget_is_short(monkeypatch, session):
+async def test_run_ci_still_sends_when_budget_is_short(monkeypatch, session):
     calls: list[str] = []
     _record(monkeypatch, calls)
-    await pipeline.run_ci(session, _rt(lambda: 100.0))  # almost no budget: fetch is the stage that gives way
-    assert calls[:4] == ["stage_decisions", "stage_notify", "stage_fill", "stage_notify"]
-    assert "stage_fetch" not in calls and "stage_submit" not in calls
+    await pipeline.run_ci(session, _rt(lambda: 100.0))
+    assert calls[0] == "stage_send_to_user" and "stage_fetch" not in calls
+    assert not {"stage_fill", "stage_submit", "stage_notify", "stage_decisions"} & set(calls)
 
 
 @pytest.mark.asyncio

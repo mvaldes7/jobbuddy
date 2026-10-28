@@ -1,13 +1,14 @@
 """CI pipeline stages (GitHub Actions: `python -m jobbuddy.cli run-ci`). No LLM calls anywhere in here.
 
-CI does the mechanical work:        fetch (ATS APIs) -> hard filter -> embed (local MiniLM) -> fill forms
-                                    -> Telegram card -> poll callbacks -> submit approved
+CI does the mechanical work:        fetch (ATS APIs) -> hard filter -> embed (local MiniLM)
+                                    -> send tailored, score>=70 listings + cover letter PDF to Mike (Telegram)
+                                    (form filling / approval cards / submission are RETIRED: Mike applies himself)
 The on-box agent does the judgement: score ('filtered' jobs) -> tailor ('scored' apps) -> answer
                                     field_questions ('needs_answers' apps)   (see jobbuddy/agent_io.py)
 
 jobs:          found -> filtered (waits for agent score) -> scored | below_threshold | filtered_out
-applications:  scored (waits for agent tailoring) -> tailored -> [needs_answers -> tailored] -> filled
-               -> awaiting_approval -> approved -> submitted        (paused / failed / skipped: side exits)
+applications:  scored (waits for agent tailoring) -> tailored -> sent_to_user      (skipped: side exit)
+               legacy rows may still be filled / awaiting_approval / approved / submitted / paused / failed
 
 `run_ci` uses ONE Session for the whole run and commits after each stage.
 """
@@ -710,7 +711,9 @@ def stage_decisions(session: Session, rt: Runtime) -> dict[str, int]:
     return stats
 
 
-# =============================== submit ===============================
+# =============================== submit (retired) ===============================
+SUBMISSION_RETIRED = True  # Oct 27 2026: Mike applies himself; stage_submit is a no-op
+
 def submit_failure_message(app: Application, result: Any) -> str:
     """Telegram text after a submit attempt that did not confirm: says plainly whether it went through."""
     job = app.job
@@ -736,6 +739,9 @@ async def stage_submit(session: Session, rt: Runtime, *, confirm: bool = False, 
 
     pc = rt.cfg.pipeline
     stats = {"submitted": 0, "refused": 0, "paused": 0, "failed": 0}
+    if SUBMISSION_RETIRED:
+        log.info("submission is retired: jobbuddy sends listings to Mike and never submits applications")
+        return {**stats, "disabled": True}
     if not (pc.auto_submit or confirm):
         log.info("submission disabled (AUTO_SUBMIT=false and no --confirm)")
         return stats
@@ -830,10 +836,111 @@ def build_report(session: Session) -> dict[str, Any]:
     }
 
 
+
+# =============================== send to Mike ===============================
+SEND_READY_STATUSES = (AppStatus.TAILORED.value,)
+
+
+def _latest_score(session: Session, job: Job) -> tuple[int | None, dict[str, Any]]:
+    row = session.scalar(select(JobScore).where(JobScore.job_id == job.id, JobScore.llm_score.is_not(None))
+                         .order_by(JobScore.id.desc()).limit(1))
+    return (row.llm_score, row.llm_reasons or {}) if row is not None else (None, {})
+
+
+def why_it_matches(reasons: dict[str, Any]) -> str:
+    for key in ("reasons", "strengths"):
+        items = reasons.get(key) or []
+        if isinstance(items, list) and items:
+            return str(items[0]).strip()[:300]
+    return "Scored above the match threshold."
+
+
+def listing_caption(app: Application, score: int | None, why: str) -> str:
+    job = app.job
+    url = job.url or job.apply_url or ""
+    lines = [f"\U0001F3AF {job.company_name or '?'} - {job.title}",
+             f"Score: {score if score is not None else '?'}",
+             f"Why: {why}",
+             f"Apply: {url}",
+             "Cover letter attached. jobbuddy did not apply; apply yourself when ready."]
+    return "\n".join(lines)[:1024]
+
+
+def cover_letter_pdf_for(session: Session, rt: Runtime, app: Application) -> tuple[str, bytes] | None:
+    """The tailored cover letter PDF (rendered from Mike's Word template), rendering + storing it if needed."""
+    from jobbuddy.tailoring.render import render_cover_letter_pdf
+
+    stored = repo.latest_document(session, "cover_letter", application_id=app.id)
+    if stored is not None and stored.filename.lower().endswith(".pdf"):
+        return stored.filename, stored.content
+    if not app.cover_letter_text:
+        return None
+    appdir = rt.workdir / f"app{app.id}"
+    appdir.mkdir(parents=True, exist_ok=True)
+    p = rt.profile.personal
+    pdf = render_cover_letter_pdf(rt.profile, app.cover_letter_text,
+                                  appdir / f"{p.first_name}_{p.last_name}_Cover_Letter.docx",
+                                  template=repo.cover_letter_template(session))
+    if pdf is None:
+        return None
+    content = pdf.read_bytes()
+    repo.store_document(session, kind="cover_letter", filename=pdf.name, content=content, application_id=app.id)
+    return pdf.name, content
+
+
+def stage_send_to_user(session: Session, rt: Runtime, app_ids: list[int] | None = None,
+                       statuses: tuple[str, ...] = SEND_READY_STATUSES) -> dict[str, Any]:
+    """Score >= agent_score_threshold AND tailored -> Telegram sendDocument (listing + cover letter PDF) to Mike,
+    then status 'sent_to_user'. jobbuddy never fills or submits application forms."""
+    threshold = rt.cfg.matching.agent_score_threshold
+    stats: dict[str, Any] = {"sent": 0, "below_threshold": 0, "no_cover_letter": 0, "failed": 0, "sent_ids": []}
+    q = select(Application).where(Application.status.in_(statuses)).order_by(Application.id)
+    if app_ids:
+        q = q.where(Application.id.in_(app_ids))
+    for app in session.scalars(q).all():
+        score, reasons = _latest_score(session, app.job)
+        if score is None or score < threshold:
+            stats["below_threshold"] += 1
+            continue
+        doc = cover_letter_pdf_for(session, rt, app)
+        if doc is None:
+            stats["no_cover_letter"] += 1
+            log.info("app %s: no cover letter PDF yet; will retry next run", app.id)
+            continue
+        caption = listing_caption(app, score, why_it_matches(reasons))
+        if rt.cfg.pipeline.dry_run:
+            log.info("[dry-run] would send app %s to Mike", app.id)
+            continue
+        try:
+            sender = getattr(rt.notifier, "send_document", None)
+            if sender is None:  # slack/email notifiers: text only
+                rt.notifier.send_alert(caption, None)
+                resp = None
+            else:
+                resp = sender(caption, doc[0], doc[1])
+        except Exception as exc:
+            stats["failed"] += 1
+            log.warning("send to Mike failed for app %s: %s", app.id, type(exc).__name__)
+            continue
+        msg_id = ((resp or {}).get("result") or {}).get("message_id") if isinstance(resp, dict) else None
+        old = app.status
+        app.notified_at = utcnow()
+        repo.transition(session, app, AppStatus.SENT_TO_USER, actor="system",
+                        note=f"listing + cover letter sent via {rt.notifier.name}",
+                        payload={"score": score, "telegram_message_id": msg_id, "from": old})
+        session.commit()
+        stats["sent"] += 1
+        stats["sent_ids"].append(app.id)
+    session.flush()
+    return stats
+
 # =============================== run-ci ===============================
 async def run_ci(session: Session, rt: Runtime, trigger: str = "cron") -> dict[str, Any]:
-    """GitHub Actions entrypoint. Order: decisions -> notify -> fill -> notify -> submit -> fetch -> filter/embed ->
-    manual-apply digest -> report.
+    """GitHub Actions entrypoint. Order: send-to-user -> fetch -> filter/embed -> manual-apply digest -> report.
+
+    jobbuddy NO LONGER fills or submits application forms. Tailored applications scoring >= the agent threshold
+    are sent to Mike in Telegram (listing URL + cover letter PDF) and marked 'sent_to_user'; he applies himself.
+    Legacy notes below describe the retired fill/approve/submit flow.
 
     Ready ('tailored') applications are filled and their approval cards sent FIRST, inside
     pipeline.fill_time_budget_minutes, so a slow fetch can never starve them; fetch/filter use the remaining
@@ -845,19 +952,10 @@ async def run_ci(session: Session, rt: Runtime, trigger: str = "cron") -> dict[s
     session.commit()
     stats: dict[str, Any] = {}
     try:
-        stats["decisions"] = stage_decisions(session, rt)
+        # 1) ready (tailored, score >= threshold) applications -> listing + cover letter PDF to Mike.
+        #    No form filling, no approval cards, no submission.
+        stats["send_to_user"] = stage_send_to_user(session, rt)
         session.commit()
-        # 1) ready applications first: cards still owed from an earlier run -> fill (own time slice) ->
-        #    approval cards -> approved submissions
-        stats["notify_pending"] = stage_notify(session, rt)
-        session.commit()
-        stats["fill"] = await stage_fill(session, rt)
-        session.commit()
-        stats["notify"] = stage_notify(session, rt)
-        session.commit()
-        if rt.time_left() > 180:
-            stats["submit"] = await stage_submit(session, rt)
-            session.commit()
         # 2) discovery with whatever budget remains
         if rt.time_left() > FETCH_MIN_SECONDS_LEFT:
             stats["fetch"] = await stage_fetch(session, rt)

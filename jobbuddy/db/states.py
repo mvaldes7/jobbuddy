@@ -1,4 +1,5 @@
-"""Application state machine. Submission is only reachable from `approved`."""
+"""Application state machine. jobbuddy no longer fills or submits forms: ready applications end in
+`sent_to_user` (Mike applies himself). Legacy states are kept so existing rows stay valid."""
 from __future__ import annotations
 
 from enum import Enum
@@ -27,6 +28,7 @@ class AppStatus(str, Enum):
     FAILED = "failed"
     SKIPPED = "skipped"
     PAUSED = "paused"  # CAPTCHA / login / email-code: waiting for a human
+    SENT_TO_USER = "sent_to_user"  # listing + cover letter PDF sent to Mike in Telegram; he applies himself
 
 
 class QuestionStatus(str, Enum):
@@ -60,14 +62,15 @@ TRANSITIONS: dict[AppStatus, set[AppStatus]] = {
     AppStatus.FOUND: {AppStatus.FILTERED, AppStatus.SKIPPED},
     AppStatus.FILTERED: {AppStatus.SCORED, AppStatus.SKIPPED},
     AppStatus.SCORED: {AppStatus.TAILORED, AppStatus.SKIPPED, AppStatus.FAILED},
-    AppStatus.TAILORED: {AppStatus.FILLED, AppStatus.PAUSED, AppStatus.FAILED, AppStatus.SKIPPED, AppStatus.TAILORED,
+    AppStatus.TAILORED: {AppStatus.SENT_TO_USER, AppStatus.FILLED, AppStatus.PAUSED, AppStatus.FAILED, AppStatus.SKIPPED, AppStatus.TAILORED,
                          AppStatus.NEEDS_ANSWERS},
-    AppStatus.NEEDS_ANSWERS: {AppStatus.TAILORED, AppStatus.SKIPPED, AppStatus.FAILED},
-    AppStatus.FILLED: {AppStatus.AWAITING_APPROVAL, AppStatus.FAILED, AppStatus.SKIPPED},
-    AppStatus.AWAITING_APPROVAL: {AppStatus.APPROVED, AppStatus.SKIPPED, AppStatus.TAILORED, AppStatus.AWAITING_APPROVAL},
-    AppStatus.APPROVED: {AppStatus.SUBMITTED, AppStatus.FAILED, AppStatus.PAUSED, AppStatus.SKIPPED},
-    AppStatus.PAUSED: {AppStatus.TAILORED, AppStatus.APPROVED, AppStatus.SKIPPED, AppStatus.FAILED},
-    AppStatus.FAILED: {AppStatus.TAILORED, AppStatus.SKIPPED},
+    AppStatus.NEEDS_ANSWERS: {AppStatus.SENT_TO_USER, AppStatus.TAILORED, AppStatus.SKIPPED, AppStatus.FAILED},
+    AppStatus.FILLED: {AppStatus.SENT_TO_USER, AppStatus.AWAITING_APPROVAL, AppStatus.FAILED, AppStatus.SKIPPED},
+    AppStatus.AWAITING_APPROVAL: {AppStatus.SENT_TO_USER, AppStatus.APPROVED, AppStatus.SKIPPED, AppStatus.TAILORED, AppStatus.AWAITING_APPROVAL},
+    AppStatus.APPROVED: {AppStatus.SENT_TO_USER, AppStatus.SUBMITTED, AppStatus.FAILED, AppStatus.PAUSED, AppStatus.SKIPPED},
+    AppStatus.PAUSED: {AppStatus.SENT_TO_USER, AppStatus.TAILORED, AppStatus.APPROVED, AppStatus.SKIPPED, AppStatus.FAILED},
+    AppStatus.FAILED: {AppStatus.SENT_TO_USER, AppStatus.TAILORED, AppStatus.SKIPPED},
+    AppStatus.SENT_TO_USER: {AppStatus.SKIPPED, AppStatus.SENT_TO_USER},
     AppStatus.SUBMITTED: set(),
     AppStatus.SKIPPED: set(),
 }

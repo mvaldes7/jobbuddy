@@ -159,7 +159,8 @@ def log_event(session: Session, app: Application, event_type: str, from_status: 
               to_status: str | None, *, actor: str = "system", note: str | None = None,
               payload: dict[str, Any] | None = None) -> ApplicationEvent:
     ev = ApplicationEvent(application_id=app.id, event_type=event_type, from_status=from_status,
-                          to_status=to_status, actor=actor, note=note, payload=payload)
+                          to_status=to_status, actor=actor, note=note, payload=payload,
+                          created_at=utcnow())
     session.add(ev)
     session.flush()
     return ev

@@ -20,7 +20,7 @@ def test_cli_report_and_check_profile(monkeypatch, db_url):
     reset_settings_cache()
 
 
-def test_submit_requires_confirm(monkeypatch, db_url):
+def test_submit_is_retired_in_cli(monkeypatch, db_url):
     from jobbuddy.config import reset_settings_cache
     import jobbuddy.profile as prof
 
@@ -28,7 +28,7 @@ def test_submit_requires_confirm(monkeypatch, db_url):
     monkeypatch.setattr(prof, "_default_profile_path", lambda: ROOT / "profile" / "profile.example.yaml")
     reset_settings_cache()
     r = CliRunner().invoke(app, ["submit"])
-    assert r.exit_code == 2 and "--confirm" in r.output
+    assert r.exit_code == 2 and "retired" in r.output
     reset_settings_cache()
 
 

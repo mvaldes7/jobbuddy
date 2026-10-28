@@ -38,6 +38,8 @@ class Notifier(Protocol):
     def send_approval_request(self, req: ApprovalRequest) -> None: ...
     def send_alert(self, text: str, screenshot_png: bytes | None = None) -> None: ...
     def poll_decisions(self, state: dict[str, str]) -> list[Decision]: ...
+    def send_document(self, caption: str, filename: str, content: bytes,
+                      content_type: str = "application/pdf") -> dict[str, Any]: ...
 
 
 class NullNotifier:
@@ -54,6 +56,11 @@ class NullNotifier:
 
     def poll_decisions(self, state: dict[str, str]) -> list[Decision]:
         return []
+
+    def send_document(self, caption: str, filename: str, content: bytes,
+                      content_type: str = "application/pdf") -> dict[str, Any]:
+        self.sent.append({"caption": caption, "filename": filename, "size": len(content)})
+        return {"ok": True}
 
 
 def format_low_confidence(items: list[dict[str, Any]], limit: int = 12) -> str:

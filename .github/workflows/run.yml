@@ -1,6 +1,6 @@
 # jobbuddy CI pipeline (private repo): fetch (public ATS APIs) -> hard filter -> embed (local MiniLM)
-# -> fill forms for 'tailored' applications, STOP before Submit, screenshot to DB + Telegram card
-# -> poll Telegram callbacks -> submit approved applications (only if repo variable AUTO_SUBMIT=true).
+# -> for 'tailored' applications scoring >= 70: Telegram sendDocument to Mike (listing URL + cover letter PDF)
+#    and mark them 'sent_to_user'. jobbuddy NO LONGER fills or submits application forms (no Playwright).
 # - Runtime DB access ONLY via DATABASE_URL (pooled, DML-only role jobbuddy_app). No migrations and no
 #   DATABASE_URL_DIRECT here: see migrate.yml.
 # - No artifacts of any kind: screenshots live in the DB and Mike's private Telegram chat.
@@ -10,7 +10,12 @@ name: run
 on:
   schedule:
     - cron: "17 1,14,19 * * *"   # UTC, off the hour
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      send_app_ids:
+        description: "One-off: space-separated application ids to send to Mike now (backfill). Empty = normal run."
+        required: false
+        default: ""
 
 concurrency:
   group: run-ci
@@ -31,8 +36,8 @@ jobs:
       TELEGRAM_ALLOWED_USER_ID: ${{ secrets.TELEGRAM_ALLOWED_USER_ID }}
       CANDIDATE_PROFILE_JSON: ${{ secrets.CANDIDATE_PROFILE_JSON }}
       EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL }}
-      # Safety switch, not a secret. Unset => "false": approved apps wait for `jobbuddy submit --confirm`.
-      AUTO_SUBMIT: ${{ vars.AUTO_SUBMIT || 'false' }}
+      # Submission is retired in code; pinned off regardless of any repo variable.
+      AUTO_SUBMIT: "false"
       NOTIFIER: telegram
       HEADLESS: "true"
       HF_HUB_DISABLE_TELEMETRY: "1"
@@ -75,13 +80,6 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      - name: Cache Playwright browsers
-        if: steps.guard.outputs.ready == 'true'
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ms-playwright-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
-
       - name: Cache Hugging Face models
         if: steps.guard.outputs.ready == 'true'
         uses: actions/cache@v4
@@ -95,10 +93,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install Playwright Chromium
-        if: steps.guard.outputs.ready == 'true'
-        run: python -m playwright install --with-deps chromium
-
       - name: Run pipeline
-        if: steps.guard.outputs.ready == 'true'
+        if: steps.guard.outputs.ready == 'true' && github.event.inputs.send_app_ids == ''
         run: python -m jobbuddy.cli run-ci
+
+      - name: One-off - send listed apps to Mike (backfill)
+        if: steps.guard.outputs.ready == 'true' && github.event.inputs.send_app_ids != ''
+        env:
+          SEND_APP_IDS: ${{ github.event.inputs.send_app_ids }}
+        run: |
+          args=""
+          for id in $SEND_APP_IDS; do
+            case "$id" in (*[!0-9]*|"") echo "::error::bad app id"; exit 1;; esac
+            args="$args --app $id"
+          done
+          python -m jobbuddy.cli send-to-user --backfill $args
