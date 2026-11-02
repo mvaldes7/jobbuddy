@@ -9,7 +9,7 @@ name: run
 
 on:
   schedule:
-    - cron: "17 1,14,19 * * *"   # UTC, off the hour
+    - cron: "47 17 * * *"   # UTC, off the hour
   workflow_dispatch:
     inputs:
       send_app_ids:
