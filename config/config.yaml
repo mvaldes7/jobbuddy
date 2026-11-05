@@ -42,7 +42,7 @@ matching:
     - active security clearance
     - ts/sci
   similarity_threshold: 0.30      # CI: below this (MiniLM cosine vs profile) the agent never sees the job
-  agent_score_threshold: 70      # on-box agent score (prompts/score_rubric.md) needed to tailor/apply
+  agent_score_threshold: 65      # on-box agent score (prompts/score_rubric.md) needed to tailor/apply
 
 tailoring:
   max_bullets_per_role: 6
