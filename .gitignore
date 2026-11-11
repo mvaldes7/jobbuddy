@@ -30,3 +30,6 @@ screenshots/
 Screenshot*
 *.eml
 !tests/fixtures/*.eml
+# --- Streamlit secrets (dashboard) ---
+.streamlit/secrets.toml
+**/.streamlit/secrets.toml

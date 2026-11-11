@@ -1,5 +1,7 @@
-# Deliberately light: no playwright, no torch. Deployable to Azure App Service F1.
-streamlit>=1.35
+# Streamlit Community Cloud installs this (it sits next to the main file, dashboard/app.py).
+# Deliberately light: no playwright, no torch, no jobbuddy package.
+streamlit>=1.50
 sqlalchemy>=2.0.30
 psycopg[binary]>=3.2,<4
 pandas>=2.2
+pyyaml>=6.0
