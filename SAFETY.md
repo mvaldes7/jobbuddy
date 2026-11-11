@@ -75,8 +75,9 @@ agent passes alert e-mails it already has access to into `ingest-alert-email`.
 | Voice sample | DB / local file | not committed in `prompts/cover_letter.md`. It's injected into the instructions only at `agent-pull` time |
 | Agent work files | temp files on the box | `agent-push-tailoring` renders documents into a temp dir and deletes them after upload. The agent's pull/push JSON files should be deleted after each run |
 
-Access is least-privilege. `jobbuddy_app` (CI and agent) is DML-only. `jobbuddy_dashboard` can SELECT and
-INSERT only into `approvals` and `application_events`. Only `migrate.yml` holds the owner URL
+Access is least-privilege. `jobbuddy_app` (CI and agent) is DML-only. `jobbuddy_dashboard` is read-only
+(including `candidate_documents` for cover-letter downloads) and can INSERT only into `application_events`. It has no
+`neon_superuser` membership. Only `migrate.yml` holds the owner URL
 (`DATABASE_URL_DIRECT`). `application_events` is append-only, enforced by DB triggers.
 
 ## 7. Before you turn on `AUTO_SUBMIT`

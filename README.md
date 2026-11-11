@@ -50,7 +50,7 @@ flowchart LR
 
   DB[("Neon Postgres + pgvector<br/>jobs · applications · field_questions<br/>candidate_documents · approvals · events")]
   TG["Mike · Telegram<br/>Approve / Edit / Skip"]
-  DASH["Streamlit dashboard<br/>(INSERT-only approvals/events)"]
+  DASH["Streamlit dashboard<br/>(read-only + INSERT-only events)"]
   MIG["migrate.yml<br/>alembic upgrade head"]
 
   ATS --> F
@@ -165,8 +165,10 @@ pytest -q                     # local fixtures + mocked Neon/Telegram only; no n
 
 ## Production setup
 
-1. **Neon Postgres + pgvector.** Create the roles `jobbuddy_app` (DML) and `jobbuddy_dashboard` (SELECT +
-   INSERT on approvals/application_events) outside migrations. `migrate.yml` (push to `main`) runs `alembic
+1. **Neon Postgres + pgvector.** Create the roles `jobbuddy_app` (DML) and `jobbuddy_dashboard` (SELECT, including
+   `candidate_documents` for cover-letter downloads, plus INSERT on `application_events` only) outside migrations,
+   with SQL as the owner (`CREATE ROLE … LOGIN PASSWORD …`). Don't create them in the Neon console or API: those
+   roles are added to `neon_superuser`, which can read and write every table. `migrate.yml` (push to `main`) runs `alembic
    upgrade head` with `DATABASE_URL_DIRECT`. That creates the `vector` extension, all tables, the HNSW index,
    the append-only triggers, and the grants. App code never runs DDL or temp tables, and it uses no
    server-side prepared statements (`prepare_threshold=None`).

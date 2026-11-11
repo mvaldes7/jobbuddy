@@ -36,6 +36,8 @@ CREATE TRIGGER trg_application_events_append_only
 """
 
 # Least privilege. Roles are created by the DB owner outside of migrations (no passwords in code).
+# Create them with SQL as the owner, not the Neon console/API: console/API roles join neon_superuser.
+# jobbuddy_dashboard is read-only except INSERT on the append-only application_events.
 PG_GRANTS = """
 DO $$
 BEGIN
@@ -49,9 +51,10 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'jobbuddy_dashboard') THEN
     GRANT USAGE ON SCHEMA public TO jobbuddy_dashboard;
     GRANT SELECT ON companies, jobs, job_scores, applications, application_events, approvals,
-                    screenshots, field_questions, llm_usage, pipeline_runs TO jobbuddy_dashboard;
-    GRANT INSERT ON approvals, application_events TO jobbuddy_dashboard;
-    GRANT USAGE, SELECT ON SEQUENCE approvals_id_seq, application_events_id_seq TO jobbuddy_dashboard;
+                    screenshots, field_questions, llm_usage, pipeline_runs, candidate_documents
+                    TO jobbuddy_dashboard;
+    GRANT INSERT ON application_events TO jobbuddy_dashboard;
+    GRANT USAGE, SELECT ON SEQUENCE application_events_id_seq TO jobbuddy_dashboard;
   END IF;
 END
 $$;
